@@ -112,8 +112,8 @@ tests, and publishes the release. Tags with a suffix such as `-alpha.0` are mark
 as pre-releases.
 
 ```bash
-git tag v0.0.1-alpha.0
-git push origin v0.0.1-alpha.0
+git tag v0.0.1-alpha.1
+git push origin v0.0.1-alpha.1
 ```
 
 ## Build

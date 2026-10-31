@@ -319,9 +319,10 @@ function render(s) {
   /* History */
   for (const [k, v] of [['cpu', cpu.usage], ['mem', mp]]) {
     const last = hist[k][hist[k].length - 1];
-    if (last && last.t >= s.time) continue;
-    hist[k].push({ t: s.time, v });
-    if (hist[k].length > HISTORY) hist[k].shift();
+    if (!last || last.t < s.time) {
+      hist[k].push({ t: s.time, v });
+      if (hist[k].length > HISTORY) hist[k].shift();
+    }
     charts[k].data = hist[k];
     drawChart(charts[k]);
   }

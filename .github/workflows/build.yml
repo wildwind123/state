@@ -31,33 +31,52 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=${{ steps.version.outputs.version }}
           cmake --build build
 
-      # Every output is saved so a failure can be diagnosed from the artifact or the next step.
+      # Every output is saved; on failure the reason is posted as a (public) annotation.
       - name: Smoke test
         run: |
           set -x
           export STATE_CACHE_DIR="$RUNNER_TEMP/cache"
           out="$RUNNER_TEMP/smoke"
           mkdir -p "$out"
+          # get URL FILE: fails with the response body when the status is not 200
+          get() {
+            code=$(curl -sS -o "$2" -w '%{http_code}' "$1") || code="no response"
+            [ "$code" = 200 ] && return 0
+            echo "::error title=$1 returned HTTP $code::$(head -c 1500 "$2" | tr '\n' ' ')"
+            return 1
+          }
           ./build/state --version
           ./build/state > "$out/overview.txt" 2>&1
           ./build/state --json > "$out/overview.json"
           python3 -m json.tool "$out/overview.json" > /dev/null
           ./build/state dirstat --scan /usr/share > "$out/scan.txt" 2>&1
           ./build/state dirstat --tree /usr/share/doc -d 1 -n 5 > "$out/tree.txt" 2>&1
-          ./build/state -s 127.0.0.1:8084 > "$out/server.log" 2>&1 &
+          # A random high port: a fixed one may already be taken on the runner.
+          port=$((20000 + RANDOM % 20000))
+          base="http://127.0.0.1:$port"
+          ./build/state -s "127.0.0.1:$port" > "$out/server.log" 2>&1 &
           server=$!
-          for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
-          curl -fsS http://127.0.0.1:8084/api/system -o "$out/system.json"
+          for i in $(seq 30); do
+            kill -0 "$server" 2>/dev/null || { echo "::error title=server exited::$(tr '\n' ' ' < "$out/server.log")"; exit 1; }
+            curl -fs -o /dev/null "$base/" && break
+            sleep 1
+          done
+          get "$base/api/system" "$out/system.json"
           python3 -m json.tool "$out/system.json" > /dev/null
-          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=/usr/share&depth=1' -o "$out/dirstat.json"
+          get "$base/api/dirstat?path=/usr/share&depth=1" "$out/dirstat.json"
           python3 -m json.tool "$out/dirstat.json" > /dev/null
-          curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
+          get "$base/dirstat" "$out/dirstat.html"
           kill "$server"
 
       - name: Show smoke test output
         if: failure()
         run: |
-          for f in "$RUNNER_TEMP"/smoke/*; do echo "===== $f"; cat "$f"; echo; done
+          for f in "$RUNNER_TEMP"/smoke/*.txt "$RUNNER_TEMP"/smoke/*.log; do
+            echo "===== $f"; cat "$f"; echo
+            # Annotations are visible without logging in; %0A keeps line breaks.
+            body=$(head -c 3000 "$f" | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            echo "::warning title=$(basename "$f")::$body"
+          done
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -113,12 +132,19 @@ jobs:
           ./build/state.exe
           ./build/state.exe dirstat --scan 'C:/Windows/System32/drivers' -q
           ./build/state.exe dirstat --tree 'c:\windows\system32\drivers' -d 1 -n 5
-          ./build/state.exe -s 127.0.0.1:8084 &
-          for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
-          curl -fsS http://127.0.0.1:8084/api/system
-          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=C:/Windows/System32/drivers&depth=1' > /dev/null
-          curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
-          kill %1 || taskkill //F //IM state.exe
+          port=$((20000 + RANDOM % 20000))
+          base="http://127.0.0.1:$port"
+          ./build/state.exe -s "127.0.0.1:$port" &
+          server=$!
+          for i in $(seq 30); do
+            kill -0 "$server" 2>/dev/null || { echo "::error title=server exited::see log"; exit 1; }
+            curl -fs -o /dev/null "$base/" && break
+            sleep 1
+          done
+          curl -fsS "$base/api/system"
+          curl -fsS "$base/api/dirstat?path=C:/Windows/System32/drivers&depth=1" > /dev/null
+          curl -fsS -o /dev/null "$base/dirstat"
+          kill "$server" || taskkill //F //IM state.exe
 
       - name: Package
         run: |
