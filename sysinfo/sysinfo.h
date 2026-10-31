@@ -23,6 +23,7 @@ typedef struct {
     int ncpu;
     double usage;       /* percent, all cores */
     double *core_usage; /* ncpu entries, percent */
+    int has_load;       /* Windows has no load average */
     double load[3];
     uint64_t uptime_s;
 } si_cpu;
@@ -71,23 +72,28 @@ typedef struct {
     size_t ngpus;
 } si_snapshot;
 
-/* cpu.c */
+/*
+ * Platform functions: Linux in host.c, cpu.c, mem.c, disk.c, gpu.c;
+ * Windows in win32.c and gpu_win32.c.
+ */
+void si_host_info(char *host, size_t hostlen, char *kernel, size_t kernellen);
 int si_cpu_sample_read(si_cpu_sample *s);
-void si_cpu_sample_free(si_cpu_sample *s);
 /* Fills cpu from two samples taken some time apart (plus model, load, uptime). */
 void si_cpu_compute(const si_cpu_sample *prev, const si_cpu_sample *cur, si_cpu *cpu);
+int si_mem_read(si_mem *m);
+int si_disks_read(si_disk **out, size_t *count);
+int si_gpus_read(si_gpu **out, size_t *count);
+
+/* common.c */
+void si_cpu_sample_free(si_cpu_sample *s);
+double si_cpu_usage(const si_cpu_times *a, const si_cpu_times *b);
 void si_cpu_free(si_cpu *cpu);
 void si_cpu_copy(si_cpu *dst, const si_cpu *src);
-
-/* mem.c */
-int si_mem_read(si_mem *m);
-
-/* disk.c */
-int si_disks_read(si_disk **out, size_t *count);
 void si_disks_free(si_disk *d, size_t count);
-
-/* gpu.c */
-int si_gpus_read(si_gpu **out, size_t *count);
+void si_gpu_init(si_gpu *g, const char *vendor, const char *source);
+void si_gpu_push(si_gpu **out, size_t *count, const si_gpu *g);
+/* Appends NVIDIA GPUs reported by nvidia-smi; returns how many. */
+int si_nvidia_read(si_gpu **out, size_t *count);
 
 /* snapshot.c: host info + memory + disks; cpu and gpus are filled by the caller. */
 void si_snapshot_base(si_snapshot *s);

@@ -1,3 +1,4 @@
+/* Linux: /proc/meminfo */
 #include "sysinfo.h"
 
 #include <string.h>

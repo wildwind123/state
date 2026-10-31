@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "compat.h"
+
 /* Growable string buffer. */
 typedef struct {
     char *data;
@@ -29,7 +31,8 @@ void fmt_size(uint64_t bytes, char *out, size_t outlen);
 void fmt_time(int64_t t, char *out, size_t outlen);
 void fmt_ago(int64_t t, char *out, size_t outlen);
 
-/* Makes path absolute and canonical. Works for paths that no longer exist. */
+/* Makes path absolute and canonical; works for paths that no longer exist.
+ * Implemented per platform in compat.c. */
 int normalize_path(const char *in, char *out, size_t outlen);
 uint64_t now_ms(void);
 

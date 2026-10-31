@@ -1,22 +1,44 @@
 #define _GNU_SOURCE
 #include "server.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <netdb.h>
 #include <pthread.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
 #include <time.h>
-#include <unistd.h>
 
+#ifdef _WIN32
+typedef SOCKET sock_t;
+#define close_sock closesocket
+#define SEND_FLAGS 0
+#define sock_error() ((int)WSAGetLastError())
+#else
+#include <netdb.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+typedef int sock_t;
+#define INVALID_SOCKET (-1)
+#define close_sock close
+#define SEND_FLAGS MSG_NOSIGNAL
+#define sock_error() errno
+#endif
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
+#include "compat.h"
 #include "dirstat.h"
 #include "sysinfo.h"
 #include "util.h"
@@ -67,7 +89,7 @@ static void sample_once(int with_gpu)
 static void sampler_init(void)
 {
     si_cpu_sample_read(&g_prev_sample);
-    usleep(250 * 1000);
+    sleep_ms(250);
     sample_once(1);
 }
 
@@ -75,7 +97,7 @@ static void *sampler_thread(void *arg)
 {
     (void)arg;
     for (unsigned tick = 1;; tick++) {
-        sleep(1);
+        sleep_ms(1000);
         sample_once(tick % 2 == 0);
     }
     return NULL;
@@ -88,8 +110,8 @@ static void *sampler_thread(void *arg)
 typedef struct {
     int used;
     char file[PATH_MAX];
-    struct timespec mtime;
-    off_t fsize;
+    int64_t mtime_ns;
+    int64_t fsize;
     uint64_t last_use;
     ds_scan scan;
 } loaded_scan;
@@ -101,8 +123,8 @@ static pthread_mutex_t g_loaded_lock = PTHREAD_MUTEX_INITIALIZER;
 /* Must be called with g_loaded_lock held. The result stays valid until the lock is released. */
 static ds_scan *get_scan_locked(const char *file)
 {
-    struct stat st;
-    if (stat(file, &st) != 0)
+    u8_statbuf st;
+    if (u8_stat(file, &st) != 0)
         return NULL;
     loaded_scan *slot = NULL;
     for (int i = 0; i < MAX_LOADED; i++) {
@@ -111,8 +133,7 @@ static ds_scan *get_scan_locked(const char *file)
             break;
         }
     }
-    if (slot && slot->fsize == st.st_size && slot->mtime.tv_sec == st.st_mtim.tv_sec &&
-        slot->mtime.tv_nsec == st.st_mtim.tv_nsec) {
+    if (slot && slot->fsize == st.size && slot->mtime_ns == st.mtime_ns) {
         slot->last_use = ++g_use_counter;
         return &slot->scan;
     }
@@ -134,8 +155,8 @@ static ds_scan *get_scan_locked(const char *file)
         return NULL;
     slot->used = 1;
     snprintf(slot->file, sizeof slot->file, "%s", file);
-    slot->mtime = st.st_mtim;
-    slot->fsize = st.st_size;
+    slot->mtime_ns = st.mtime_ns;
+    slot->fsize = st.size;
     slot->last_use = ++g_use_counter;
     return &slot->scan;
 }
@@ -206,11 +227,12 @@ static const char *status_text(int code)
     }
 }
 
-static void send_all(int fd, const char *p, size_t n)
+static void send_all(sock_t fd, const char *p, size_t n)
 {
     while (n) {
-        ssize_t w = send(fd, p, n, MSG_NOSIGNAL);
-        if (w < 0 && errno == EINTR)
+        int chunk = n > 1 << 30 ? 1 << 30 : (int)n;
+        int w = (int)send(fd, p, chunk, SEND_FLAGS);
+        if (w < 0 && sock_error() == EINTR)
             continue;
         if (w <= 0)
             return;
@@ -219,7 +241,7 @@ static void send_all(int fd, const char *p, size_t n)
     }
 }
 
-static void respond(int fd, const http_req *req, int code, const char *ctype, const char *body,
+static void respond(sock_t fd, const http_req *req, int code, const char *ctype, const char *body,
                     size_t len)
 {
     char hdr[512];
@@ -239,13 +261,13 @@ static void respond(int fd, const http_req *req, int code, const char *ctype, co
     fflush(stdout);
 }
 
-static void respond_sb(int fd, const http_req *req, int code, sbuf *b)
+static void respond_sb(sock_t fd, const http_req *req, int code, sbuf *b)
 {
     respond(fd, req, code, "application/json; charset=utf-8", b->data, b->len);
     sb_free(b);
 }
 
-static void respond_error(int fd, const http_req *req, int code, const char *msg, const char *path)
+static void respond_error(sock_t fd, const http_req *req, int code, const char *msg, const char *path)
 {
     sbuf b;
     sb_init(&b);
@@ -351,7 +373,7 @@ static void path_param(const http_req *req, char *abs, size_t len)
         snprintf(abs, len, "/");
 }
 
-static void handle_tree(int fd, const http_req *req)
+static void handle_tree(sock_t fd, const http_req *req)
 {
     char abs[PATH_MAX];
     path_param(req, abs, sizeof abs);
@@ -390,7 +412,7 @@ static void handle_tree(int fd, const http_req *req)
     sb_free(&b);
 }
 
-static void handle_scans(int fd, const http_req *req)
+static void handle_scans(sock_t fd, const http_req *req)
 {
     ds_cache_entry *list;
     size_t n;
@@ -422,13 +444,13 @@ static void status_json(sbuf *b)
     pthread_mutex_unlock(&g_scan.lock);
 }
 
-static void handle_scan(int fd, const http_req *req)
+static void handle_scan(sock_t fd, const http_req *req)
 {
     char abs[PATH_MAX];
     path_param(req, abs, sizeof abs);
-    struct stat st;
-    if (lstat(abs, &st) != 0) {
-        respond_error(fd, req, 404, strerror(errno), abs);
+    u8_statbuf st;
+    if (u8_stat(abs, &st) != 0) {
+        respond_error(fd, req, 404, "no such file or directory", abs);
         return;
     }
     pthread_mutex_lock(&g_scan.lock);
@@ -464,7 +486,7 @@ static void handle_scan(int fd, const http_req *req)
     respond_sb(fd, req, 202, &b);
 }
 
-static void handle_system(int fd, const http_req *req)
+static void handle_system(sock_t fd, const http_req *req)
 {
     si_snapshot s;
     si_snapshot_base(&s);
@@ -483,7 +505,7 @@ static void handle_system(int fd, const http_req *req)
     respond_sb(fd, req, 200, &b);
 }
 
-static void handle(int fd, const http_req *req)
+static void handle(sock_t fd, const http_req *req)
 {
     int get = strcmp(req->method, "GET") == 0;
     int post = strcmp(req->method, "POST") == 0;
@@ -523,17 +545,21 @@ static void handle(int fd, const http_req *req)
 
 static void *conn_thread(void *arg)
 {
-    int fd = *(int *)arg;
+    sock_t fd = *(sock_t *)arg;
     free(arg);
+#ifdef _WIN32
+    DWORD tv = 10000;
+#else
     struct timeval tv = { .tv_sec = 10 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+#endif
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
 
     char buf[8192];
     size_t n = 0;
     for (;;) {
-        ssize_t r = recv(fd, buf + n, sizeof buf - 1 - n, 0);
+        int r = (int)recv(fd, buf + n, (int)(sizeof buf - 1 - n), 0);
         if (r <= 0) {
-            close(fd);
+            close_sock(fd);
             return NULL;
         }
         n += (size_t)r;
@@ -542,7 +568,7 @@ static void *conn_thread(void *arg)
             break;
         if (n >= sizeof buf - 1) {
             respond_error(fd, NULL, 431, "request headers too large", NULL);
-            close(fd);
+            close_sock(fd);
             return NULL;
         }
     }
@@ -551,7 +577,7 @@ static void *conn_thread(void *arg)
         respond_error(fd, NULL, 400, "malformed request", NULL);
     else
         handle(fd, &req);
-    close(fd);
+    close_sock(fd);
     return NULL;
 }
 
@@ -586,6 +612,13 @@ static int parse_addr(const char *a, char *host, size_t hl, char *port, size_t p
 
 int server_run(const char *addr)
 {
+#ifdef _WIN32
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        fprintf(stderr, "stat: cannot initialise Winsock\n");
+        return 1;
+    }
+#endif
     char host[256], port[16];
     if (parse_addr(addr, host, sizeof host, port, sizeof port) != 0) {
         fprintf(stderr, "stat: invalid address '%s' (expected HOST:PORT)\n", addr);
@@ -596,29 +629,46 @@ int server_run(const char *addr)
     struct addrinfo *res;
     int rc = getaddrinfo(host[0] ? host : NULL, port, &hints, &res);
     if (rc != 0) {
+#ifdef _WIN32
+        fprintf(stderr, "stat: %s: %s\n", addr, gai_strerrorA(rc));
+#else
         fprintf(stderr, "stat: %s: %s\n", addr, gai_strerror(rc));
+#endif
         return 1;
     }
-    int lfd = -1, err = 0;
+    sock_t lfd = INVALID_SOCKET;
+    int err = 0;
     for (struct addrinfo *ai = res; ai; ai = ai->ai_next) {
-        lfd = socket(ai->ai_family, ai->ai_socktype | SOCK_CLOEXEC, ai->ai_protocol);
-        if (lfd < 0)
+        lfd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (lfd == INVALID_SOCKET)
             continue;
+#ifdef _WIN32
+        /* SO_REUSEADDR on Windows lets two servers share a port; this is the safe variant. */
+        int one = 1;
+        setsockopt(lfd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&one, sizeof one);
+#else
         int one = 1;
         setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
-        if (bind(lfd, ai->ai_addr, ai->ai_addrlen) == 0 && listen(lfd, 64) == 0)
+#endif
+        if (bind(lfd, ai->ai_addr, (int)ai->ai_addrlen) == 0 && listen(lfd, 64) == 0)
             break;
-        err = errno;
-        close(lfd);
-        lfd = -1;
+        err = sock_error();
+        close_sock(lfd);
+        lfd = INVALID_SOCKET;
     }
     freeaddrinfo(res);
-    if (lfd < 0) {
+    if (lfd == INVALID_SOCKET) {
+#ifdef _WIN32
+        fprintf(stderr, "stat: cannot listen on %s (Winsock error %d)\n", addr, err);
+#else
         fprintf(stderr, "stat: cannot listen on %s: %s\n", addr, strerror(err));
+#endif
         return 1;
     }
 
+#ifndef _WIN32
     signal(SIGPIPE, SIG_IGN);
+#endif
     char cache[PATH_MAX];
     ds_cache_dir(cache, sizeof cache);
     int v6 = strchr(host, ':') != NULL;
@@ -636,17 +686,17 @@ int server_run(const char *addr)
     sampler_init();
     pthread_create(&sampler, &attr, sampler_thread, NULL);
     for (;;) {
-        int c = accept4(lfd, NULL, NULL, SOCK_CLOEXEC);
-        if (c < 0) {
-            if (errno != EINTR)
-                perror("stat: accept");
+        sock_t c = accept(lfd, NULL, NULL);
+        if (c == INVALID_SOCKET) {
+            if (sock_error() != EINTR)
+                fprintf(stderr, "stat: accept failed (error %d)\n", sock_error());
             continue;
         }
-        int *arg = xmalloc(sizeof *arg);
+        sock_t *arg = xmalloc(sizeof *arg);
         *arg = c;
         pthread_t t;
         if (pthread_create(&t, &attr, conn_thread, arg) != 0) {
-            close(c);
+            close_sock(c);
             free(arg);
         }
     }

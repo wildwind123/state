@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
+#include "compat.h"
 #include "dirstat.h"
 #include "server.h"
 #include "sysinfo.h"
@@ -30,8 +30,12 @@ static void usage(FILE *out)
           "  -j, --json               print JSON (same as the API) instead of a tree\n"
           "  -q, --quiet              no progress or summary output\n"
           "\n"
+#ifdef _WIN32
+          "Cache directory: %STAT_CACHE_DIR%, else %LOCALAPPDATA%\\stat\\dirstat\n",
+#else
           "Cache directory: $STAT_CACHE_DIR, else $XDG_CACHE_HOME/stat/dirstat,\n"
           "else ~/.cache/stat/dirstat\n",
+#endif
           out);
 }
 
@@ -196,7 +200,7 @@ static int cmd_dirstat(int argc, char **argv)
 
     switch (mode) {
     case M_SCAN:
-        if (!quiet && isatty(STDERR_FILENO))
+        if (!quiet && stderr_is_tty())
             so.progress = cli_progress;
         return do_scan(path, &so, &to, json, quiet);
     case M_TREE:
@@ -216,7 +220,7 @@ static int overview(int json)
     si_cpu_sample a, b;
     si_snapshot_base(&s);
     si_cpu_sample_read(&a);
-    usleep(500 * 1000); /* CPU usage is measured over this interval */
+    sleep_ms(500); /* CPU usage is measured over this interval */
     si_cpu_sample_read(&b);
     si_cpu_compute(&a, &b, &s.cpu);
     si_cpu_sample_free(&a);
@@ -237,6 +241,7 @@ static int overview(int json)
 
 int main(int argc, char **argv)
 {
+    platform_init(&argc, &argv);
     if (argc < 2)
         return overview(0);
     const char *cmd = argv[1];

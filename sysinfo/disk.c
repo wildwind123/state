@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+/* Linux: /proc/self/mounts + statvfs */
 #include "sysinfo.h"
 
 #include <stdlib.h>
@@ -86,14 +87,4 @@ int si_disks_read(si_disk **out, size_t *count)
     fclose(f);
     free(devs);
     return 0;
-}
-
-void si_disks_free(si_disk *d, size_t count)
-{
-    for (size_t i = 0; i < count; i++) {
-        free(d[i].device);
-        free(d[i].mount);
-        free(d[i].fstype);
-    }
-    free(d);
 }

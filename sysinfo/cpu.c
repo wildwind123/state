@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+/* Linux: /proc/stat, /proc/cpuinfo, /proc/loadavg */
 #include "sysinfo.h"
 
 #include <stdlib.h>
@@ -50,20 +51,6 @@ int si_cpu_sample_read(si_cpu_sample *s)
     return s->all.total ? 0 : -1;
 }
 
-void si_cpu_sample_free(si_cpu_sample *s)
-{
-    free(s->core);
-    memset(s, 0, sizeof *s);
-}
-
-static double usage(const si_cpu_times *a, const si_cpu_times *b)
-{
-    if (b->total <= a->total || b->busy < a->busy)
-        return 0.0;
-    double u = 100.0 * (double)(b->busy - a->busy) / (double)(b->total - a->total);
-    return u > 100.0 ? 100.0 : u;
-}
-
 static void read_model(char *out, size_t len)
 {
     out[0] = '\0';
@@ -95,15 +82,14 @@ void si_cpu_compute(const si_cpu_sample *prev, const si_cpu_sample *cur, si_cpu 
     memset(cpu, 0, sizeof *cpu);
     read_model(cpu->model, sizeof cpu->model);
     cpu->ncpu = cur->ncpu;
-    cpu->usage = usage(&prev->all, &cur->all);
+    cpu->usage = si_cpu_usage(&prev->all, &cur->all);
     cpu->core_usage = xcalloc((size_t)(cur->ncpu ? cur->ncpu : 1), sizeof *cpu->core_usage);
     for (int i = 0; i < cur->ncpu && i < prev->ncpu; i++)
-        cpu->core_usage[i] = usage(&prev->core[i], &cur->core[i]);
+        cpu->core_usage[i] = si_cpu_usage(&prev->core[i], &cur->core[i]);
 
     FILE *f = fopen("/proc/loadavg", "r");
     if (f) {
-        if (fscanf(f, "%lf %lf %lf", &cpu->load[0], &cpu->load[1], &cpu->load[2]) != 3)
-            cpu->load[0] = cpu->load[1] = cpu->load[2] = 0;
+        cpu->has_load = fscanf(f, "%lf %lf %lf", &cpu->load[0], &cpu->load[1], &cpu->load[2]) == 3;
         fclose(f);
     }
     f = fopen("/proc/uptime", "r");
@@ -113,18 +99,4 @@ void si_cpu_compute(const si_cpu_sample *prev, const si_cpu_sample *cur, si_cpu 
             cpu->uptime_s = (uint64_t)up;
         fclose(f);
     }
-}
-
-void si_cpu_free(si_cpu *cpu)
-{
-    free(cpu->core_usage);
-    cpu->core_usage = NULL;
-}
-
-void si_cpu_copy(si_cpu *dst, const si_cpu *src)
-{
-    *dst = *src;
-    dst->core_usage = xcalloc((size_t)(src->ncpu ? src->ncpu : 1), sizeof *dst->core_usage);
-    if (src->core_usage)
-        memcpy(dst->core_usage, src->core_usage, (size_t)src->ncpu * sizeof *dst->core_usage);
 }

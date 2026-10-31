@@ -2,13 +2,16 @@
 #include "dirstat.h"
 
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
+
+#include "compat.h"
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 /*
  * Cache file layout (host byte order):
@@ -20,18 +23,24 @@ static const char MAGIC[8] = { 'D', 'S', 'T', 'A', 'T', 0, 0, 1 };
 
 void ds_cache_dir(char *out, size_t len)
 {
-    const char *e = getenv("STAT_CACHE_DIR");
-    if (e && *e) {
+    char e[PATH_MAX];
+    if (u8_getenv("STAT_CACHE_DIR", e, sizeof e) == 0) {
         snprintf(out, len, "%s", e);
         return;
     }
-    e = getenv("XDG_CACHE_HOME");
-    if (e && *e) {
+#ifdef _WIN32
+    if (u8_getenv("LOCALAPPDATA", e, sizeof e) != 0 && u8_getenv("TEMP", e, sizeof e) != 0)
+        snprintf(e, sizeof e, "C:/");
+    snprintf(out, len, "%s/stat/dirstat", e);
+#else
+    if (u8_getenv("XDG_CACHE_HOME", e, sizeof e) == 0) {
         snprintf(out, len, "%s/stat/dirstat", e);
         return;
     }
-    e = getenv("HOME");
-    snprintf(out, len, "%s/.cache/stat/dirstat", e && *e ? e : "/tmp");
+    if (u8_getenv("HOME", e, sizeof e) != 0)
+        snprintf(e, sizeof e, "/tmp");
+    snprintf(out, len, "%s/.cache/stat/dirstat", e);
+#endif
 }
 
 static int mkdir_p(const char *path)
@@ -42,13 +51,11 @@ static int mkdir_p(const char *path)
         if (*p != '/')
             continue;
         *p = '\0';
-        if (mkdir(buf, 0755) != 0 && errno != EEXIST)
-            return -1;
+        /* Intermediate parts like "C:" may refuse mkdir; only the final result matters. */
+        u8_mkdir(buf);
         *p = '/';
     }
-    if (mkdir(buf, 0755) != 0 && errno != EEXIST)
-        return -1;
-    return 0;
+    return u8_mkdir(buf);
 }
 
 /* One cache file per scanned root, named after the percent-encoded path. */
@@ -104,9 +111,9 @@ int ds_cache_save(const ds_scan *s, char *file_out, size_t file_len, char *err, 
         return -1;
     }
     cache_file_for(s->root, file, sizeof file);
-    snprintf(tmp, sizeof tmp, "%s.tmp.%ld", file, (long)getpid());
+    snprintf(tmp, sizeof tmp, "%s.tmp.%ld", file, get_pid());
 
-    FILE *f = fopen(tmp, "wb");
+    FILE *f = u8_fopen(tmp, "wb");
     if (!f) {
         snprintf(err, errlen, "%s: %s", tmp, strerror(errno));
         return -1;
@@ -122,9 +129,9 @@ int ds_cache_save(const ds_scan *s, char *file_out, size_t file_len, char *err, 
     int rc = write_node(f, s->tree);
     if (fclose(f) != 0)
         rc = -1;
-    if (rc != 0 || rename(tmp, file) != 0) {
-        snprintf(err, errlen, "cannot write %s: %s", file, strerror(errno));
-        unlink(tmp);
+    if (rc != 0 || u8_rename(tmp, file) != 0) {
+        snprintf(err, errlen, "cannot write %s", file);
+        u8_unlink(tmp);
         return -1;
     }
     if (file_out)
@@ -203,7 +210,7 @@ static ds_node *read_node(FILE *f)
 int ds_cache_load(const char *file, ds_scan *out)
 {
     memset(out, 0, sizeof *out);
-    FILE *f = fopen(file, "rb");
+    FILE *f = u8_fopen(file, "rb");
     if (!f)
         return -1;
     setvbuf(f, NULL, _IOFBF, 1 << 20);
@@ -222,7 +229,7 @@ int ds_cache_load(const char *file, ds_scan *out)
 static int read_entry(const char *file, ds_cache_entry *e)
 {
     ds_scan s = { 0 };
-    FILE *f = fopen(file, "rb");
+    FILE *f = u8_fopen(file, "rb");
     if (!f)
         return -1;
     int rc = -1;
@@ -259,17 +266,17 @@ int ds_cache_list(ds_cache_entry **out, size_t *count)
     ds_cache_dir(dir, sizeof dir);
     *out = NULL;
     *count = 0;
-    DIR *d = opendir(dir);
+    u8_dir *d = u8_opendir(dir);
     if (!d)
-        return errno == ENOENT ? 0 : -1;
+        return 0; /* no cache yet */
     size_t cap = 0;
-    struct dirent *de;
-    while ((de = readdir(d)) != NULL) {
-        size_t nl = strlen(de->d_name);
-        if (nl < 7 || strcmp(de->d_name + nl - 6, ".dstat") != 0)
+    const char *name;
+    while ((name = u8_readdir(d)) != NULL) {
+        size_t nl = strlen(name);
+        if (nl < 7 || strcmp(name + nl - 6, ".dstat") != 0)
             continue;
         char file[PATH_MAX];
-        snprintf(file, sizeof file, "%s/%s", dir, de->d_name);
+        snprintf(file, sizeof file, "%s/%s", dir, name);
         ds_cache_entry e;
         if (read_entry(file, &e) != 0)
             continue;
@@ -279,7 +286,7 @@ int ds_cache_list(ds_cache_entry **out, size_t *count)
         }
         (*out)[(*count)++] = e;
     }
-    closedir(d);
+    u8_closedir(d);
     if (*count > 1)
         qsort(*out, *count, sizeof **out, cmp_entry_time_desc);
     return 0;

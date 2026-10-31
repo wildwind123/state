@@ -4,18 +4,12 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/utsname.h>
 #include <time.h>
-#include <unistd.h>
 
 void si_snapshot_base(si_snapshot *s)
 {
     memset(s, 0, sizeof *s);
-    if (gethostname(s->hostname, sizeof s->hostname - 1) != 0)
-        snprintf(s->hostname, sizeof s->hostname, "unknown");
-    struct utsname u;
-    if (uname(&u) == 0)
-        snprintf(s->kernel, sizeof s->kernel, "%s %s", u.sysname, u.release);
+    si_host_info(s->hostname, sizeof s->hostname, s->kernel, sizeof s->kernel);
     s->time = (int64_t)time(NULL);
     si_mem_read(&s->mem);
     si_disks_read(&s->disks, &s->ndisks);
@@ -51,8 +45,12 @@ void si_snapshot_json(sbuf *b, const si_snapshot *s)
 
     sb_puts(b, ",\"cpu\":{\"model\":");
     sb_json_str(b, c->model);
-    sb_printf(b, ",\"cores\":%d,\"usage\":%.1f,\"load\":[%.2f,%.2f,%.2f],\"core_usage\":[", c->ncpu,
-              c->usage, c->load[0], c->load[1], c->load[2]);
+    sb_printf(b, ",\"cores\":%d,\"usage\":%.1f,\"load\":", c->ncpu, c->usage);
+    if (c->has_load)
+        sb_printf(b, "[%.2f,%.2f,%.2f]", c->load[0], c->load[1], c->load[2]);
+    else
+        sb_puts(b, "null");
+    sb_puts(b, ",\"core_usage\":[");
     for (int i = 0; i < c->ncpu; i++)
         sb_printf(b, "%s%.1f", i ? "," : "", c->core_usage ? c->core_usage[i] : 0.0);
     sb_puts(b, "]}");
@@ -135,8 +133,10 @@ void si_snapshot_print(FILE *out, const si_snapshot *s)
     fprintf(out, "%s · %s · up %s · %s\n\n", s->hostname, s->kernel, a, when);
 
     /* CPU */
-    fprintf(out, "CPU      %s · %d cores · load %.2f %.2f %.2f\n", c->model[0] ? c->model : "unknown",
-            c->ncpu, c->load[0], c->load[1], c->load[2]);
+    fprintf(out, "CPU      %s · %d cores", c->model[0] ? c->model : "unknown", c->ncpu);
+    if (c->has_load)
+        fprintf(out, " · load %.2f %.2f %.2f", c->load[0], c->load[1], c->load[2]);
+    fputc('\n', out);
     fputs("         ", out);
     bar(out, c->usage, 30);
     fprintf(out, " %5.1f%%\n", c->usage);

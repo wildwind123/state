@@ -47,6 +47,44 @@ cmake --build build
 > `./build/stat`, or put it on your `PATH` under another name, so scripts that use
 > `/usr/bin/stat` keep working.
 
+### Windows
+
+`stat.exe` is built with MinGW-w64 (Windows 10 or newer). It is a single static
+file with no DLLs to ship.
+
+Cross-compile from Linux (the dev container has the toolchain):
+
+```bash
+cmake -S . -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
+cmake --build build-win          # -> build-win/stat.exe
+```
+
+Or build on Windows in an [MSYS2](https://www.msys2.org/) UCRT64 shell:
+
+```bash
+pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+cmake -S . -B build -G Ninja && cmake --build build
+```
+
+MSVC is not supported (the code uses pthreads and `getopt_long`, which MinGW provides).
+
+On Windows, paths are shown with forward slashes (`C:/Users`). Input accepts
+either `C:\Users` or `C:/Users`, and matching is case-insensitive.
+
+| | Linux | Windows |
+|---|---|---|
+| CPU | `/proc/stat` | `GetSystemTimes`, `NtQuerySystemInformation` (per core) |
+| Load average | `/proc/loadavg` | not available (shows uptime instead) |
+| Memory / swap | `/proc/meminfo` | `GlobalMemoryStatusEx`; page files as swap |
+| Disks | mounted filesystems | drive letters (`C:/`, `D:/`, network drives) |
+| GPU | `nvidia-smi`; AMD and Intel via `/sys/class/drm` | `nvidia-smi`; any vendor via DXGI + the "GPU Engine" performance counters Task Manager uses |
+| Dirstat sizes | allocated blocks; hard links once | size rounded up to the cluster size (real allocation for compressed, sparse and OneDrive files); hard links counted per link, like Explorer |
+| Links | symlinks not followed | junctions and symlinks not followed |
+| Cache | `~/.cache/stat/dirstat` | `%LOCALAPPDATA%\stat\dirstat` |
+
+Run as Administrator to scan folders such as `C:\Windows\System32\config`.
+Otherwise they are counted as unreadable.
+
 ## CLI
 
 ```bash
@@ -73,7 +111,8 @@ If several scans contain the path, the newest one is used.
 Sizes are bytes on disk (like `du`). Hard links are counted once.
 Virtual filesystems (`/proc`, `/sys`, cgroup, …) are skipped.
 
-Cache: `$STAT_CACHE_DIR`, else `$XDG_CACHE_HOME/stat/dirstat`, else `~/.cache/stat/dirstat`.
+Cache: `$STAT_CACHE_DIR`, else `$XDG_CACHE_HOME/stat/dirstat`, else `~/.cache/stat/dirstat`
+(Windows: `%LOCALAPPDATA%\stat\dirstat`).
 
 ## Server / API
 

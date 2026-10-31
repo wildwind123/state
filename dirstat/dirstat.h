@@ -59,10 +59,15 @@ typedef struct {
     double min_ratio; /* fold children smaller than this share of the start node */
 } ds_json_opts;
 
-/* scan.c */
+/* scan.c (POSIX) / scan_win32.c */
 int ds_scan_path(const char *path, const ds_scan_opts *opts, ds_scan *out, char *err, size_t errlen);
-void ds_scan_free(ds_scan *s);
+
+/* node.c */
+ds_node *ds_node_new(const char *name, uint8_t type);
+void ds_node_add(ds_node *p, ds_node *c);
+void ds_node_finish(ds_node *dir); /* sort children by size and trim memory */
 void ds_node_free(ds_node *n);
+void ds_scan_free(ds_scan *s);
 int ds_path_covers(const char *root, const char *path);
 ds_node *ds_find(const ds_scan *s, const char *path);
 

@@ -31,7 +31,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libncurses-dev \
         procps \
         man-db \
-        manpages-dev
+        manpages-dev \
+        gcc-mingw-w64-x86-64-posix \
+        mingw-w64-x86-64-dev \
+        binutils-mingw-w64-x86-64
 
 # Use ccache transparently for gcc/cc/clang
 ENV PATH=/usr/lib/ccache:${PATH} \

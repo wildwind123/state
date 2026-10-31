@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+/* Linux/POSIX scanner. The Windows one is scan_win32.c. */
 #include "dirstat.h"
 
 #include <dirent.h>
@@ -102,32 +103,6 @@ static int is_virtual_fs(int fd)
     return 0;
 }
 
-static ds_node *node_new(const char *name, uint8_t type)
-{
-    ds_node *n = xcalloc(1, sizeof *n);
-    n->name = xstrdup(name);
-    n->type = type;
-    return n;
-}
-
-static void node_add(ds_node *p, ds_node *c)
-{
-    if (p->nchildren == p->cap) {
-        p->cap = p->cap ? p->cap * 2 : 4;
-        p->children = xrealloc(p->children, p->cap * sizeof *p->children);
-    }
-    p->children[p->nchildren++] = c;
-}
-
-static int cmp_size_desc(const void *a, const void *b)
-{
-    const ds_node *x = *(const ds_node *const *)a;
-    const ds_node *y = *(const ds_node *const *)b;
-    if (x->size != y->size)
-        return x->size < y->size ? 1 : -1;
-    return strcmp(x->name, y->name);
-}
-
 static void report(scan_ctx *c)
 {
     if (c->opts->progress && c->items % REPORT_EVERY == 0)
@@ -157,7 +132,7 @@ static void scan_dir(scan_ctx *c, int fd, ds_node *dir, dev_t dev)
         uint64_t sz = (uint64_t)st.st_blocks * 512;
         ds_node *n;
         if (S_ISDIR(st.st_mode)) {
-            n = node_new(nm, DS_DIR);
+            n = ds_node_new(nm, DS_DIR);
             n->size = sz;
             c->bytes += sz;
             if (st.st_dev != dev && c->opts->one_fs) {
@@ -178,24 +153,18 @@ static void scan_dir(scan_ctx *c, int fd, ds_node *dir, dev_t dev)
             /* Count hard-linked files once, like du. */
             if (st.st_nlink > 1 && seen_before(c, st.st_dev, st.st_ino))
                 continue;
-            n = node_new(nm, S_ISREG(st.st_mode) ? DS_FILE : DS_OTHER);
+            n = ds_node_new(nm, S_ISREG(st.st_mode) ? DS_FILE : DS_OTHER);
             n->size = sz;
             c->bytes += sz;
         }
-        node_add(dir, n);
+        ds_node_add(dir, n);
         dir->size += n->size;
         dir->items += n->items + 1;
         c->items++;
         report(c);
     }
     closedir(d);
-
-    if (dir->nchildren > 1)
-        qsort(dir->children, dir->nchildren, sizeof *dir->children, cmp_size_desc);
-    if (dir->cap > dir->nchildren) {
-        dir->children = xrealloc(dir->children, dir->nchildren * sizeof *dir->children);
-        dir->cap = dir->nchildren;
-    }
+    ds_node_finish(dir);
 }
 
 int ds_scan_path(const char *path, const ds_scan_opts *opts, ds_scan *out, char *err, size_t errlen)
@@ -211,7 +180,7 @@ int ds_scan_path(const char *path, const ds_scan_opts *opts, ds_scan *out, char 
     scan_ctx c = { .opts = opts };
     uint64_t t0 = now_ms();
     uint8_t type = S_ISDIR(st.st_mode) ? DS_DIR : S_ISREG(st.st_mode) ? DS_FILE : DS_OTHER;
-    ds_node *root = node_new(abs, type);
+    ds_node *root = ds_node_new(abs, type);
     root->size = (uint64_t)st.st_blocks * 512;
     out->scanned_at = (int64_t)time(NULL);
 
@@ -233,60 +202,4 @@ int ds_scan_path(const char *path, const ds_scan_opts *opts, ds_scan *out, char 
     out->duration_ms = now_ms() - t0;
     out->errors = c.errors;
     return 0;
-}
-
-void ds_node_free(ds_node *n)
-{
-    if (!n)
-        return;
-    for (uint32_t i = 0; i < n->nchildren; i++)
-        ds_node_free(n->children[i]);
-    free(n->children);
-    free(n->name);
-    free(n);
-}
-
-void ds_scan_free(ds_scan *s)
-{
-    ds_node_free(s->tree);
-    free(s->root);
-    memset(s, 0, sizeof *s);
-}
-
-int ds_path_covers(const char *root, const char *path)
-{
-    if (strcmp(root, "/") == 0)
-        return path[0] == '/';
-    size_t rl = strlen(root);
-    return strncmp(root, path, rl) == 0 && (path[rl] == '\0' || path[rl] == '/');
-}
-
-ds_node *ds_find(const ds_scan *s, const char *path)
-{
-    if (!ds_path_covers(s->root, path))
-        return NULL;
-    ds_node *n = s->tree;
-    const char *p = path + strlen(s->root);
-    while (*p) {
-        while (*p == '/')
-            p++;
-        if (!*p)
-            break;
-        const char *start = p;
-        while (*p && *p != '/')
-            p++;
-        size_t len = (size_t)(p - start);
-        ds_node *next = NULL;
-        for (uint32_t i = 0; i < n->nchildren; i++) {
-            ds_node *c = n->children[i];
-            if (strlen(c->name) == len && memcmp(c->name, start, len) == 0) {
-                next = c;
-                break;
-            }
-        }
-        if (!next)
-            return NULL;
-        n = next;
-    }
-    return n;
 }

@@ -1,15 +1,14 @@
 #define _GNU_SOURCE
 #include "util.h"
 
-#include <errno.h>
+#include "compat.h"
+
 #include <inttypes.h>
-#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 static void oom(void)
 {
@@ -178,9 +177,8 @@ void fmt_size(uint64_t bytes, char *out, size_t outlen)
 
 void fmt_time(int64_t t, char *out, size_t outlen)
 {
-    time_t tt = (time_t)t;
     struct tm tm;
-    localtime_r(&tt, &tm);
+    local_time(t, &tm);
     strftime(out, outlen, "%Y-%m-%d %H:%M:%S", &tm);
 }
 
@@ -197,69 +195,4 @@ void fmt_ago(int64_t t, char *out, size_t outlen)
         snprintf(out, outlen, "%" PRId64 " hours ago", d / 3600);
     else
         snprintf(out, outlen, "%" PRId64 " days ago", d / 86400);
-}
-
-/* Lexically resolves ".", ".." and duplicate slashes in an absolute path. */
-static void clean_path(const char *in, char *out, size_t outlen)
-{
-    size_t o = 0;
-    const char *p = in;
-    while (*p) {
-        while (*p == '/')
-            p++;
-        if (!*p)
-            break;
-        const char *s = p;
-        while (*p && *p != '/')
-            p++;
-        size_t n = (size_t)(p - s);
-        if (n == 1 && s[0] == '.')
-            continue;
-        if (n == 2 && s[0] == '.' && s[1] == '.') {
-            while (o > 0 && out[o - 1] != '/')
-                o--;
-            if (o > 0)
-                o--;
-            continue;
-        }
-        if (o + 1 + n + 1 > outlen)
-            break;
-        out[o++] = '/';
-        memcpy(out + o, s, n);
-        o += n;
-    }
-    if (o == 0)
-        out[o++] = '/';
-    out[o] = '\0';
-}
-
-int normalize_path(const char *in, char *out, size_t outlen)
-{
-    char buf[PATH_MAX];
-    if (realpath(in, buf)) {
-        if (strlen(buf) + 1 > outlen) {
-            errno = ENAMETOOLONG;
-            return -1;
-        }
-        strcpy(out, buf);
-        return 0;
-    }
-    if (in[0] == '/') {
-        clean_path(in, out, outlen);
-        return 0;
-    }
-    char cwd[PATH_MAX];
-    if (!getcwd(cwd, sizeof cwd))
-        return -1;
-    char joined[PATH_MAX * 2];
-    snprintf(joined, sizeof joined, "%s/%s", cwd, in);
-    clean_path(joined, out, outlen);
-    return 0;
-}
-
-uint64_t now_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }

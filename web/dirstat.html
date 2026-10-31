@@ -136,8 +136,16 @@ const fmtAgo = t => {
   if (d < 86400) return Math.round(d / 3600) + ' h ago';
   return Math.round(d / 86400) + ' days ago';
 };
-const joinPath = (base, name) => base === '/' ? '/' + name : base + '/' + name;
-const parentPath = p => { const i = p.lastIndexOf('/'); return i <= 0 ? '/' : p.slice(0, i); };
+/* Paths are "/usr/lib" on Linux and "C:/Users" on Windows; roots ("/", "C:/") end with a slash. */
+const isRoot = p => p === '/' || /^[A-Za-z]:\/$/.test(p);
+const joinPath = (base, name) => base.endsWith('/') ? base + name : base + '/' + name;
+const parentPath = p => {
+  if (isRoot(p)) return p;
+  const i = p.lastIndexOf('/');
+  const parent = p.slice(0, i);
+  if (/^[A-Za-z]:$/.test(parent)) return parent + '/';
+  return i <= 0 ? '/' : parent;
+};
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function setStatus(msg, err) {
@@ -410,7 +418,7 @@ cv.addEventListener('mousemove', ev => {
   if (!r) { tip.style.display = 'none'; return; }
   const n = r.n, total = state.data.tree.size || 1;
   const kind = n.type === 'rest' ? `${n.count} entries grouped together` : n.type === 'dir' ? `directory · ${n.items.toLocaleString()} items` : n.type === 'file' ? 'file' : 'special file';
-  tip.innerHTML = `<b>${esc(n.type === 'rest' ? r.path + '/…' : r.path)}</b><br>${fmtSize(n.size)} · ${(100 * n.size / total).toFixed(2)}% of view<br><span class="m">${kind}${n.error ? ' · unreadable' : ''}${n.skipped ? ' · skipped (virtual/other fs)' : ''}</span>`;
+  tip.innerHTML = `<b>${esc(n.type === 'rest' ? joinPath(r.path, '…') : r.path)}</b><br>${fmtSize(n.size)} · ${(100 * n.size / total).toFixed(2)}% of view<br><span class="m">${kind}${n.error ? ' · unreadable' : ''}${n.skipped ? ' · skipped (virtual/other fs)' : ''}</span>`;
   tip.style.display = 'block';
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(ev.clientX + 14, innerWidth - tw - 8) + 'px';
@@ -439,7 +447,11 @@ new ResizeObserver(() => render()).observe($('#mapwrap'));
   const fromHash = decodeURIComponent(location.hash.slice(1));
   if (fromHash) load(fromHash);
   else if (scans.length) go(scans[0].root);
-  else load('/');
+  else {
+    /* Nothing scanned yet: start at the first disk ("/" on Linux, "C:/" on Windows). */
+    const sys = await api('/api/system').catch(() => null);
+    load(sys && sys.disks.length ? sys.disks[0].mount : '/');
+  }
   if (st && st.running) poll();
 })();
 </script>

@@ -241,7 +241,8 @@ function render(s) {
   meter($('#cpu-meter'), cpu.usage);
   $('#cpu-model').textContent = cpu.cores + ' cores';
   $('#cpu-model').title = cpu.model;
-  $('#cpu-sub').textContent = `load ${cpu.load.map(v => v.toFixed(2)).join(' · ')}`;
+  /* Windows has no load average */
+  $('#cpu-sub').textContent = cpu.load ? `load ${cpu.load.map(v => v.toFixed(2)).join(' · ')}` : `up ${fmtUptime(s.uptime_s)}`;
   $('#cores-sub').textContent = cpu.model;
   const cores = $('#cores');
   if (cores.children.length !== cpu.core_usage.length)
