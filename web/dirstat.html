@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stat dirstat</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --fg: #1d232b; --muted: #687280; --border: #dce0e5;
+  --accent: #2f6fdf; --bar: #d5dfee; --hover: #eef3fb; --err: #c62828;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #13161b; --panel: #1b1f26; --fg: #e3e7ed; --muted: #8b95a2; --border: #2b313a;
+    --accent: #5b93f0; --bar: #2f3d57; --hover: #232a35; --err: #ef6b6b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--fg); display: flex; flex-direction: column;
+}
+header {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 14px; margin: 0 6px 0 0; white-space: nowrap; }
+header h1 a { color: inherit; text-decoration: none; }
+nav { display: flex; gap: 2px; margin-right: 8px; }
+nav a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 6px; }
+nav a:hover { background: var(--hover); color: var(--fg); }
+nav a.on { color: var(--fg); background: var(--hover); font-weight: 600; }
+#path {
+  flex: 1; min-width: 160px; padding: 5px 8px; font: inherit; font-family: ui-monospace, monospace;
+  color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+}
+button, select {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+button:hover { background: var(--hover); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+#status {
+  padding: 5px 12px; color: var(--muted); border-bottom: 1px solid var(--border);
+  background: var(--panel); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#status.err { color: var(--err); }
+main { flex: 1; display: flex; min-height: 0; }
+aside {
+  width: 360px; flex: none; overflow: auto; background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+aside h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  margin: 12px 12px 4px;
+}
+.row {
+  display: grid; grid-template-columns: 1fr 72px 54px; gap: 8px; align-items: center;
+  padding: 3px 12px; cursor: pointer; position: relative;
+}
+.row:hover { background: var(--hover); }
+.row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: relative; }
+.row .size, .row .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.row .bar { position: absolute; left: 0; top: 2px; bottom: 2px; background: var(--bar); border-radius: 3px; z-index: 0; }
+.row .name span { position: relative; z-index: 1; padding-left: 4px; }
+.row.static { cursor: default; }
+.swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+#mapwrap { flex: 1; position: relative; min-width: 0; min-height: 200px; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+#empty {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  color: var(--muted); text-align: center; padding: 24px;
+}
+#tip {
+  position: fixed; pointer-events: none; display: none; z-index: 10; max-width: 420px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-size: 12px;
+}
+#tip b { word-break: break-all; }
+#tip .m { color: var(--muted); }
+@media (max-width: 760px) {
+  main { flex-direction: column; }
+  aside { width: auto; max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">stat</a></h1>
+  <nav><a href="/">Overview</a><a href="/dirstat" class="on">Dirstat</a></nav>
+  <button id="up" title="Parent directory">↑ Up</button>
+  <input id="path" type="text" spellcheck="false" value="/">
+  <button id="go">Open</button>
+  <select id="depth" title="Treemap depth">
+    <option value="2">depth 2</option>
+    <option value="3">depth 3</option>
+    <option value="4" selected>depth 4</option>
+    <option value="6">depth 6</option>
+    <option value="8">depth 8</option>
+  </select>
+  <button id="scan" class="primary">Scan</button>
+</header>
+<div id="status">Loading…</div>
+<main>
+  <aside>
+    <h2>Contents</h2>
+    <div id="children"></div>
+    <h2>Extensions</h2>
+    <div id="exts"></div>
+    <h2>Cached scans</h2>
+    <div id="scans"></div>
+  </aside>
+  <div id="mapwrap">
+    <canvas id="map"></canvas>
+    <div id="empty"></div>
+  </div>
+</main>
+<div id="tip"></div>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const state = { path: '/', data: null, rects: [], hover: null, depth: 4, scanning: false };
+
+const fmtSize = b => {
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  let i = 0, v = b;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return i ? v.toFixed(1) + ' ' + u[i] : b + ' B';
+};
+const fmtAgo = t => {
+  const d = Math.max(0, Date.now() / 1000 - t);
+  if (d < 60) return Math.round(d) + ' s ago';
+  if (d < 3600) return Math.round(d / 60) + ' min ago';
+  if (d < 86400) return Math.round(d / 3600) + ' h ago';
+  return Math.round(d / 86400) + ' days ago';
+};
+const joinPath = (base, name) => base === '/' ? '/' + name : base + '/' + name;
+const parentPath = p => { const i = p.lastIndexOf('/'); return i <= 0 ? '/' : p.slice(0, i); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function setStatus(msg, err) {
+  const el = $('#status');
+  el.textContent = msg;
+  el.classList.toggle('err', !!err);
+}
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const j = await r.json().catch(() => ({ error: r.statusText }));
+  if (!r.ok) { const e = new Error(j.error || r.statusText); e.status = r.status; throw e; }
+  return j;
+}
+
+/* ---------- colors: files by extension, like WinDirStat ---------- */
+const extOf = n => {
+  if (n.type !== 'file') return n.type;
+  const i = n.name.lastIndexOf('.');
+  return i > 0 && i < n.name.length - 1 ? n.name.slice(i + 1).toLowerCase() : '(none)';
+};
+const PALETTE = [210, 25, 130, 280, 50, 175, 330, 95, 0, 245, 150, 305];
+let extHue = new Map();
+function colorFor(n, depth) {
+  if (n.type === 'rest') return 'hsl(220, 6%, 52%)';
+  if (n.type === 'dir') return `hsl(215, 14%, ${46 - Math.min(depth, 6) * 2}%)`;
+  if (n.type === 'other') return 'hsl(0, 0%, 60%)';
+  const h = extHue.get(extOf(n));
+  return h === undefined ? 'hsl(40, 10%, 62%)' : `hsl(${h}, 62%, 52%)`;
+}
+function collectExts(root) {
+  const totals = new Map();
+  (function walk(n) {
+    if (n.type === 'file') { const e = extOf(n); totals.set(e, (totals.get(e) || 0) + n.size); }
+    (n.children || []).forEach(walk);
+  })(root);
+  const sorted = [...totals].sort((a, b) => b[1] - a[1]);
+  extHue = new Map(sorted.slice(0, PALETTE.length).map(([e], i) => [e, PALETTE[i]]));
+  return sorted;
+}
+
+/* ---------- squarified treemap (Bruls, Huizing, van Wijk) ---------- */
+function squarify(items, x, y, w, h, out) {
+  const total = items.reduce((s, n) => s + n.size, 0);
+  if (total <= 0) return;
+  const scale = (w * h) / total;
+  let i = 0;
+  while (i < items.length && w > 0 && h > 0) {
+    const side = Math.min(w, h);
+    let sum = 0, min = Infinity, max = 0, j = i, best = Infinity;
+    while (j < items.length) {
+      const a = items[j].size * scale;
+      const s2 = sum + a, mn = Math.min(min, a), mx = Math.max(max, a);
+      const worst = Math.max((side * side * mx) / (s2 * s2), (s2 * s2) / (side * side * mn));
+      if (j > i && worst > best) break;
+      best = worst; sum = s2; min = mn; max = mx; j++;
+    }
+    if (w >= h) {
+      const rw = sum / h; let yy = y;
+      for (let k = i; k < j; k++) { const rh = items[k].size * scale / rw; out.push([items[k], x, yy, rw, rh]); yy += rh; }
+      x += rw; w -= rw;
+    } else {
+      const rh = sum / w; let xx = x;
+      for (let k = i; k < j; k++) { const rw = items[k].size * scale / rh; out.push([items[k], xx, y, rw, rh]); xx += rw; }
+      y += rh; h -= rh;
+    }
+    i = j;
+  }
+}
+
+function render() {
+  const wrap = $('#mapwrap'), cv = $('#map');
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  state.rects = [];
+  if (!state.data) return;
+  ctx.font = '11px system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  drawNode(ctx, state.data.tree, state.data.path, 0, 0, W, H, 0);
+  if (state.hover) {
+    const r = state.hover;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.strokeRect(r.x + 1, r.y + 1, Math.max(0, r.w - 2), Math.max(0, r.h - 2));
+  }
+}
+
+function label(ctx, text, x, y, w, color) {
+  if (w < 24) return;
+  let t = text;
+  if (ctx.measureText(t).width > w - 6) {
+    while (t.length > 1 && ctx.measureText(t + '…').width > w - 6) t = t.slice(0, -1);
+    t += '…';
+  }
+  ctx.fillStyle = color;
+  ctx.fillText(t, x + 3, y);
+}
+
+function drawNode(ctx, n, path, x, y, w, h, depth) {
+  if (w < 0.5 || h < 0.5) return;
+  const rec = { n, path, x, y, w, h, depth };
+  state.rects.push(rec);
+  const kids = (n.children || []).filter(c => c.size > 0);
+  if (n.type === 'dir' && kids.length) {
+    ctx.fillStyle = colorFor(n, depth);
+    ctx.fillRect(x, y, w, h);
+    const pad = w > 24 && h > 24 ? 2 : 0;
+    const head = w > 50 && h > 36 ? 15 : 0;
+    if (head) label(ctx, `${depth ? n.name : path}  ${fmtSize(n.size)}`, x, y + 8, w, '#fff');
+    const out = [];
+    squarify(kids, x + pad, y + pad + head, w - 2 * pad, h - 2 * pad - head, out);
+    for (const [c, cx, cy, cw, ch] of out)
+      drawNode(ctx, c, c.type === 'rest' ? path : joinPath(path, c.name), cx, cy, cw, ch, depth + 1);
+    return;
+  }
+  /* leaf: cushion-like shading */
+  const base = colorFor(n, depth);
+  if (w > 3 && h > 3) {
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, base);
+    g.addColorStop(1, shade(base));
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = base;
+  }
+  ctx.fillRect(x, y, w, h);
+  if (w > 2 && h > 2) {
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 0.5;
+    ctx.strokeRect(x + 0.25, y + 0.25, w - 0.5, h - 0.5);
+  }
+  if (n.type === 'rest') {
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1;
+    for (let d = -h; d < w; d += 6) { ctx.beginPath(); ctx.moveTo(x + d, y + h); ctx.lineTo(x + d + h, y); ctx.stroke(); }
+    ctx.restore();
+  }
+  if (h > 14) label(ctx, n.name, x, y + Math.min(h / 2, 9), w, 'rgba(255,255,255,.92)');
+}
+const shade = hsl => hsl.replace(/(\d+)%\)$/, (_, l) => Math.max(0, l - 18) + '%)');
+
+function hit(px, py) {
+  for (let i = state.rects.length - 1; i >= 0; i--) {
+    const r = state.rects[i];
+    if (px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) return r;
+  }
+  return null;
+}
+
+/* ---------- side panel ---------- */
+function renderSide(exts) {
+  const box = $('#children');
+  box.innerHTML = '';
+  const t = state.data && state.data.tree;
+  if (!t) { box.innerHTML = '<div class="row static"><span class="name">—</span></div>'; $('#exts').innerHTML = ''; return; }
+  const kids = t.children || [];
+  for (const c of kids) {
+    const pct = t.size ? (100 * c.size / t.size) : 0;
+    const row = document.createElement('div');
+    row.className = 'row' + (c.type === 'dir' ? '' : ' static');
+    const icon = c.type === 'dir' ? '📁' : c.type === 'rest' ? '⋯' : '📄';
+    row.innerHTML = `<div class="name"><div class="bar" style="width:${pct.toFixed(1)}%"></div>` +
+      `<span>${icon} ${esc(c.name)}${c.error ? ' ⚠' : ''}</span></div>` +
+      `<div class="size">${fmtSize(c.size)}</div><div class="pct">${pct.toFixed(1)}%</div>`;
+    if (c.type === 'dir') row.onclick = () => go(joinPath(state.data.path, c.name));
+    box.appendChild(row);
+  }
+  if (!kids.length) box.innerHTML = '<div class="row static"><span class="name">(empty)</span></div>';
+
+  const eb = $('#exts');
+  const total = exts.reduce((s, e) => s + e[1], 0) || 1;
+  eb.innerHTML = exts.slice(0, 12).map(([e, s]) =>
+    `<div class="row static"><div class="name"><span><i class="swatch" style="background:${colorFor({ type: 'file', name: 'x.' + e }, 0)}"></i>${esc(e === '(none)' ? e : '.' + e)}</span></div>` +
+    `<div class="size">${fmtSize(s)}</div><div class="pct">${(100 * s / total).toFixed(1)}%</div></div>`).join('');
+}
+
+async function loadScans() {
+  const box = $('#scans');
+  try {
+    const { scans } = await api('/api/dirstat/scans');
+    box.innerHTML = scans.length ? '' : '<div class="row static"><span class="name">none yet</span></div>';
+    for (const s of scans) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.title = new Date(s.scanned_at * 1000).toLocaleString();
+      row.innerHTML = `<div class="name"><span>${esc(s.root)}</span></div><div class="size">${fmtSize(s.size)}</div><div class="pct">${fmtAgo(s.scanned_at)}</div>`;
+      row.onclick = () => go(s.root);
+      box.appendChild(row);
+    }
+    return scans;
+  } catch (e) {
+    box.textContent = e.message;
+    return [];
+  }
+}
+
+/* ---------- navigation ---------- */
+function go(path) {
+  if (location.hash.slice(1) !== encodeURIComponent(path)) location.hash = encodeURIComponent(path);
+  else load(path);
+}
+
+async function load(path) {
+  state.path = path;
+  $('#path').value = path;
+  state.hover = null;
+  if (!state.scanning) setStatus('Loading ' + path + '…');
+  const empty = $('#empty');
+  try {
+    const j = await api(`/api/dirstat?path=${encodeURIComponent(path)}&depth=${state.depth}&min=0.0003&limit=1500`);
+    state.data = j;
+    empty.style.display = 'none';
+    const exts = collectExts(j.tree);
+    render(); renderSide(exts);
+    if (!state.scanning)
+      setStatus(`${fmtSize(j.tree.size)} in ${j.tree.items.toLocaleString()} items · scanned ${new Date(j.scanned_at * 1000).toLocaleString()} (${fmtAgo(j.scanned_at)})` +
+        (j.root !== j.path ? ` as part of ${j.root}` : '') + (j.errors ? ` · ${j.errors} unreadable entries` : ''));
+  } catch (e) {
+    state.data = null;
+    render(); renderSide([]);
+    empty.style.display = 'flex';
+    empty.textContent = e.status === 404 ? `${e.message}. Press “Scan” to analyse ${path}.` : e.message;
+    if (!state.scanning) setStatus(e.message, e.status !== 404);
+  }
+}
+
+async function scan() {
+  const path = $('#path').value.trim() || '/';
+  try {
+    await api('/api/dirstat/scan?path=' + encodeURIComponent(path), { method: 'POST' });
+  } catch (e) {
+    setStatus('Scan failed: ' + e.message, true);
+    if (e.status !== 409) return;
+  }
+  poll();
+}
+
+async function poll() {
+  state.scanning = true;
+  $('#scan').disabled = true;
+  try {
+    for (;;) {
+      const s = await api('/api/dirstat/status');
+      if (!s.running) {
+        state.scanning = false;
+        $('#scan').disabled = false;
+        if (s.error) setStatus('Scan of ' + s.path + ' failed: ' + s.error, true);
+        await loadScans();
+        go(s.path || state.path);
+        return;
+      }
+      setStatus(`Scanning ${s.path} … ${s.items.toLocaleString()} items, ${fmtSize(s.bytes)} (${Math.round(Date.now() / 1000 - s.started_at)} s)`);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  } catch (e) {
+    state.scanning = false;
+    $('#scan').disabled = false;
+    setStatus(e.message, true);
+  }
+}
+
+/* ---------- events ---------- */
+const cv = $('#map'), tip = $('#tip');
+cv.addEventListener('mousemove', ev => {
+  const b = cv.getBoundingClientRect();
+  const r = hit(ev.clientX - b.left, ev.clientY - b.top);
+  if (r !== state.hover) { state.hover = r; render(); }
+  if (!r) { tip.style.display = 'none'; return; }
+  const n = r.n, total = state.data.tree.size || 1;
+  const kind = n.type === 'rest' ? `${n.count} entries grouped together` : n.type === 'dir' ? `directory · ${n.items.toLocaleString()} items` : n.type === 'file' ? 'file' : 'special file';
+  tip.innerHTML = `<b>${esc(n.type === 'rest' ? r.path + '/…' : r.path)}</b><br>${fmtSize(n.size)} · ${(100 * n.size / total).toFixed(2)}% of view<br><span class="m">${kind}${n.error ? ' · unreadable' : ''}${n.skipped ? ' · skipped (virtual/other fs)' : ''}</span>`;
+  tip.style.display = 'block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(ev.clientX + 14, innerWidth - tw - 8) + 'px';
+  tip.style.top = Math.min(ev.clientY + 14, innerHeight - th - 8) + 'px';
+});
+cv.addEventListener('mouseleave', () => { tip.style.display = 'none'; state.hover = null; render(); });
+cv.addEventListener('click', ev => {
+  const b = cv.getBoundingClientRect();
+  const r = hit(ev.clientX - b.left, ev.clientY - b.top);
+  if (!r) return;
+  /* Zoom into the clicked directory, or the directory that holds the clicked file. */
+  const target = r.n.type === 'dir' ? r.path : r.n.type === 'rest' ? r.path : parentPath(r.path);
+  if (target !== state.path) go(target);
+});
+$('#up').onclick = () => go(parentPath(state.path));
+$('#go').onclick = () => go($('#path').value.trim() || '/');
+$('#path').addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
+$('#scan').onclick = scan;
+$('#depth').onchange = e => { state.depth = +e.target.value; load(state.path); };
+window.addEventListener('hashchange', () => load(decodeURIComponent(location.hash.slice(1)) || '/'));
+new ResizeObserver(() => render()).observe($('#mapwrap'));
+
+(async () => {
+  const scans = await loadScans();
+  const st = await api('/api/dirstat/status').catch(() => null);
+  const fromHash = decodeURIComponent(location.hash.slice(1));
+  if (fromHash) load(fromHash);
+  else if (scans.length) go(scans[0].root);
+  else load('/');
+  if (st && st.running) poll();
+})();
+</script>
+</body>
+</html>

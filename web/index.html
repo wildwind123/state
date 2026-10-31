@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stat overview</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2; --surface: #fcfcfb; --fg: #0b0b0b; --fg2: #52514e; --muted: #7a7974;
+  --border: #e2e1dc; --grid: #ecebe7; --hover: #efeee9;
+  --accent: #2a78d6; --track: #cde2fb; --series-2: #eb6834;
+  --warning: #fab219; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --fg: #f0efec; --fg2: #c3c2b7; --muted: #8f8e86;
+    --border: #2e2e2b; --grid: #262624; --hover: #242422;
+    --accent: #3987e5; --track: #173a66; --series-2: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --fg: #f0efec; --fg2: #c3c2b7; --muted: #8f8e86;
+  --border: #2e2e2b; --grid: #262624; --hover: #242422;
+  --accent: #3987e5; --track: #173a66; --series-2: #d95926;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 14px; margin: 0 6px 0 0; }
+header h1 a { color: inherit; text-decoration: none; }
+nav { display: flex; gap: 2px; }
+nav a { color: var(--fg2); text-decoration: none; padding: 4px 10px; border-radius: 6px; }
+nav a:hover { background: var(--hover); color: var(--fg); }
+nav a.on { color: var(--fg); background: var(--hover); font-weight: 600; }
+#host { margin-left: auto; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+#host.err { color: var(--critical); }
+main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; display: flex; justify-content: space-between; gap: 8px; }
+.card h2 small { font-weight: 400; color: var(--muted); }
+.value { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.value .unit { font-size: 15px; font-weight: 500; color: var(--fg2); margin-left: 2px; }
+.sub { color: var(--fg2); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; }
+.sub.m { color: var(--muted); white-space: nowrap; }
+.status { font-size: 12px; font-weight: 500; color: var(--fg2); margin-left: 6px; }
+.meter { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; margin-top: 10px; }
+.meter > i { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width .4s; }
+.meter.warn > i { background: var(--warning); }
+.meter.crit > i { background: var(--critical); }
+.meter.thin { height: 4px; border-radius: 2px; margin-top: 4px; }
+.meter.thin > i { border-radius: 2px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.chart { position: relative; height: 150px; }
+.chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.chart .gl { stroke: var(--grid); stroke-width: 1; }
+.chart .al { fill: var(--muted); font-size: 10px; }
+.chart .ln { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .ar { fill: var(--accent); opacity: .12; }
+.chart .xh { stroke: var(--fg2); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.tip {
+  position: absolute; pointer-events: none; display: none; white-space: nowrap; z-index: 2;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 12px; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+}
+.tip b { font-variant-numeric: tabular-nums; }
+.cores { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px 14px; }
+.core { font-size: 12px; color: var(--fg2); display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.seg { display: flex; gap: 2px; height: 8px; margin-top: 10px; }
+.seg > i { display: block; height: 100%; border-radius: 4px; min-width: 0; transition: flex-basis .4s; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; color: var(--fg2); font-size: 12px; }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; background: var(--c); vertical-align: -1px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; white-space: nowrap; }
+td.mount { font-family: ui-monospace, monospace; word-break: break-all; }
+td.use { width: 22%; min-width: 120px; }
+td.use .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg2); }
+.btn { color: var(--accent); text-decoration: none; white-space: nowrap; font-size: 12px; }
+.btn:hover { text-decoration: underline; }
+.tablewrap { overflow-x: auto; }
+.gpus { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.gpu .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 10px; color: var(--fg2); }
+.gpu .kv b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); }
+@media (max-width: 640px) {
+  main { padding: 12px 16px; }
+  #host { margin-left: 0; flex-basis: 100%; }
+  .dev, .type { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/">stat</a></h1>
+  <nav><a href="/" class="on">Overview</a><a href="/dirstat">Dirstat</a></nav>
+  <div id="host">Connecting…</div>
+</header>
+<main>
+  <section class="tiles">
+    <div class="card"><h2>CPU <small id="cpu-model"></small></h2>
+      <div class="value" id="cpu-val">–</div><div class="meter" id="cpu-meter"><i></i></div>
+      <div class="sub m" id="cpu-sub"></div></div>
+    <div class="card"><h2>Memory</h2>
+      <div class="value" id="mem-val">–</div><div class="meter" id="mem-meter"><i></i></div>
+      <div class="sub m" id="mem-sub"></div></div>
+    <div class="card"><h2>Disk space <small id="disk-count"></small></h2>
+      <div class="value" id="disk-val">–</div><div class="meter" id="disk-meter"><i></i></div>
+      <div class="sub m" id="disk-sub"></div></div>
+    <div class="card"><h2>GPU <small id="gpu-name"></small></h2>
+      <div class="value" id="gpu-val">–</div><div class="meter" id="gpu-meter"><i></i></div>
+      <div class="sub m" id="gpu-sub"></div></div>
+  </section>
+
+  <section class="charts">
+    <div class="card"><h2>CPU usage <small>last 2 minutes</small></h2><div class="chart" id="cpu-chart"></div></div>
+    <div class="card"><h2>Memory usage <small>last 2 minutes</small></h2><div class="chart" id="mem-chart"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>CPU cores <small id="cores-sub"></small></h2>
+    <div class="cores" id="cores"></div>
+  </section>
+
+  <section class="card">
+    <h2>Memory breakdown <small id="swap-sub"></small></h2>
+    <div class="seg" id="mem-seg"></div>
+    <div class="legend" id="mem-legend"></div>
+  </section>
+
+  <section class="card">
+    <h2>Disks <small>free space per filesystem</small></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Mount</th><th class="type">Type</th><th class="dev">Device</th><th class="n">Size</th><th class="n">Used</th><th class="n">Free</th><th>Usage</th><th></th></tr></thead>
+      <tbody id="disks"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="gpus" id="gpus"></div>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const HISTORY = 120;
+const hist = { cpu: [], mem: [] };
+
+const fmtSize = b => {
+  if (b == null) return '–';
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  let i = 0, v = b;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return i ? v.toFixed(v < 10 ? 1 : 0) + ' ' + u[i] : b + ' B';
+};
+const pct = (a, b) => b ? 100 * a / b : 0;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtUptime = s => {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`;
+};
+
+/* Severity is carried by the meter fill and repeated as text, never by color alone. */
+const level = p => p >= 90 ? 'crit' : p >= 75 ? 'warn' : '';
+const levelText = p => p >= 90 ? '● critical' : p >= 75 ? '▲ high' : '';
+function meter(el, p) {
+  el.className = el.className.replace(/\s*(warn|crit)/g, '') + (level(p) ? ' ' + level(p) : '');
+  el.firstElementChild.style.width = Math.max(0, Math.min(100, p)).toFixed(1) + '%';
+}
+function bigValue(el, p) {
+  const t = levelText(p);
+  el.innerHTML = `${p.toFixed(1)}<span class="unit">%</span>${t ? `<span class="status">${t}</span>` : ''}`;
+}
+const meterHTML = (p, thin) => `<div class="meter${thin ? ' thin' : ''}${level(p) ? ' ' + level(p) : ''}"><i style="width:${Math.min(100, p).toFixed(1)}%"></i></div>`;
+
+/* ---------- line chart: fixed 0–100% axis, crosshair + tooltip ---------- */
+function makeChart(el, label) {
+  el.innerHTML = '<svg aria-label="' + label + '"></svg><div class="tip"></div>';
+  const svg = el.querySelector('svg'), tip = el.querySelector('.tip');
+  const c = { el, svg, tip, data: [], label, hover: null };
+  svg.addEventListener('mousemove', e => {
+    const r = svg.getBoundingClientRect();
+    c.hover = e.clientX - r.left;
+    drawChart(c);
+  });
+  svg.addEventListener('mouseleave', () => { c.hover = null; drawChart(c); });
+  return c;
+}
+function drawChart(c) {
+  const W = c.el.clientWidth, H = c.el.clientHeight;
+  const L = 30, R = 4, T = 6, B = 16;
+  const w = W - L - R, h = H - T - B;
+  const x = i => L + (i + HISTORY - c.data.length) / (HISTORY - 1) * w;
+  const y = v => T + h - v / 100 * h;
+  let s = '';
+  for (const g of [0, 50, 100])
+    s += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text class="al" x="${L - 6}" y="${y(g) + 3}" text-anchor="end">${g}%</text>`;
+  s += `<text class="al" x="${L}" y="${H - 2}">−2 min</text><text class="al" x="${W - R}" y="${H - 2}" text-anchor="end">now</text>`;
+  if (c.data.length > 1) {
+    const pts = c.data.map((d, i) => `${x(i).toFixed(1)},${y(d.v).toFixed(1)}`);
+    s += `<path class="ar" d="M${x(0)},${y(0)} L${pts.join(' L')} L${x(c.data.length - 1)},${y(0)} Z"/>`;
+    s += `<polyline class="ln" points="${pts.join(' ')}"/>`;
+  }
+  c.tip.style.display = 'none';
+  if (c.hover != null && c.data.length) {
+    let i = Math.round((c.hover - L) / w * (HISTORY - 1)) - (HISTORY - c.data.length);
+    i = Math.max(0, Math.min(c.data.length - 1, i));
+    const d = c.data[i], px = x(i), py = y(d.v);
+    s += `<line class="xh" x1="${px}" x2="${px}" y1="${T}" y2="${T + h}"/><circle class="dot" cx="${px}" cy="${py}" r="4"/>`;
+    c.tip.innerHTML = `<b>${d.v.toFixed(1)}%</b> ${c.label} · ${new Date(d.t * 1000).toLocaleTimeString()}`;
+    c.tip.style.display = 'block';
+    const tw = c.tip.offsetWidth;
+    c.tip.style.left = Math.min(Math.max(0, px - tw / 2), W - tw) + 'px';
+    c.tip.style.top = Math.max(0, py - 34) + 'px';
+  }
+  c.svg.innerHTML = s;
+}
+const charts = { cpu: makeChart($('#cpu-chart'), 'CPU'), mem: makeChart($('#mem-chart'), 'memory') };
+new ResizeObserver(() => { drawChart(charts.cpu); drawChart(charts.mem); }).observe($('main'));
+
+/* ---------- render ---------- */
+function render(s) {
+  $('#host').classList.remove('err');
+  $('#host').textContent = `${s.hostname} · ${s.kernel} · up ${fmtUptime(s.uptime_s)}`;
+
+  /* CPU */
+  const cpu = s.cpu;
+  bigValue($('#cpu-val'), cpu.usage);
+  meter($('#cpu-meter'), cpu.usage);
+  $('#cpu-model').textContent = cpu.cores + ' cores';
+  $('#cpu-model').title = cpu.model;
+  $('#cpu-sub').textContent = `load ${cpu.load.map(v => v.toFixed(2)).join(' · ')}`;
+  $('#cores-sub').textContent = cpu.model;
+  const cores = $('#cores');
+  if (cores.children.length !== cpu.core_usage.length)
+    cores.innerHTML = cpu.core_usage.map((_, i) => `<div><div class="core"><span>Core ${i}</span><span></span></div>${meterHTML(0, true)}</div>`).join('');
+  cpu.core_usage.forEach((u, i) => {
+    const el = cores.children[i];
+    el.querySelector('.core span:last-child').textContent = u.toFixed(0) + '%';
+    meter(el.querySelector('.meter'), u);
+  });
+
+  /* Memory */
+  const m = s.memory, mp = pct(m.used, m.total);
+  bigValue($('#mem-val'), mp);
+  meter($('#mem-meter'), mp);
+  $('#mem-sub').textContent = `${fmtSize(m.used)} of ${fmtSize(m.total)} · ${fmtSize(m.available)} available`;
+  const cache = Math.min(m.buffers + m.cached, m.available);
+  const free = Math.max(0, m.total - m.used - cache);
+  const parts = [['Used', m.used, 'var(--accent)'], ['Cache (reclaimable)', cache, 'var(--series-2)'], ['Free', free, 'var(--track)']];
+  $('#mem-seg').innerHTML = parts.filter(p => p[1] > 0).map(([n, v, c]) =>
+    `<i style="flex:0 0 calc(${pct(v, m.total).toFixed(2)}% - 2px);background:${c}" title="${n}: ${fmtSize(v)} (${pct(v, m.total).toFixed(1)}%)"></i>`).join('');
+  $('#mem-legend').innerHTML = parts.map(([n, v, c]) => `<span style="--c:${c}">${n} ${fmtSize(v)}</span>`).join('');
+  $('#swap-sub').textContent = m.swap_total ? `swap ${fmtSize(m.swap_used)} of ${fmtSize(m.swap_total)}` : 'no swap';
+
+  /* Disks: the headline tile is the fullest filesystem, the one most likely to run out. */
+  const disks = s.disks;
+  $('#disk-count').textContent = disks.length + (disks.length === 1 ? ' filesystem' : ' filesystems');
+  const usePct = d => pct(d.used, d.used + d.free);
+  if (disks.length) {
+    const worst = disks.reduce((a, d) => usePct(d) > usePct(a) ? d : a);
+    bigValue($('#disk-val'), usePct(worst));
+    meter($('#disk-meter'), usePct(worst));
+    $('#disk-sub').textContent = `${fmtSize(worst.free)} free on ${worst.mount}`;
+  } else {
+    $('#disk-val').textContent = '–';
+    $('#disk-sub').textContent = 'no filesystems found';
+  }
+  $('#disks').innerHTML = disks.map(d => {
+    const p = usePct(d);
+    return `<tr><td class="mount">${esc(d.mount)}</td><td class="type">${esc(d.fstype)}</td><td class="dev">${esc(d.device)}</td>` +
+      `<td class="n">${fmtSize(d.total)}</td><td class="n">${fmtSize(d.used)}</td><td class="n">${fmtSize(d.free)}</td>` +
+      `<td class="use"><div class="row"><span>${p.toFixed(0)}%</span><span>${levelText(p)}</span></div>${meterHTML(p, true)}</td>` +
+      `<td class="n"><a class="btn" href="/dirstat#${encodeURIComponent(d.mount)}">Analyze →</a></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="empty">No filesystems found.</td></tr>';
+
+  /* GPU */
+  const gpus = s.gpus;
+  const g0 = gpus[0];
+  if (!g0) {
+    $('#gpu-val').textContent = 'None';
+    $('#gpu-name').textContent = '';
+    $('#gpu-sub').textContent = 'no graphics card detected';
+    meter($('#gpu-meter'), 0);
+  } else {
+    $('#gpu-name').textContent = gpus.length > 1 ? `${gpus.length} cards` : g0.vendor;
+    if (g0.util != null) { bigValue($('#gpu-val'), g0.util); meter($('#gpu-meter'), g0.util); }
+    else { $('#gpu-val').textContent = 'n/a'; meter($('#gpu-meter'), 0); }
+    $('#gpu-sub').textContent = g0.name;
+  }
+  $('#gpus').innerHTML = gpus.map(g => {
+    const memP = g.mem_total ? pct(g.mem_used || 0, g.mem_total) : null;
+    const kv = [
+      ['Usage', g.util != null ? g.util.toFixed(0) + '%' : 'not reported by driver'],
+      ['Memory', g.mem_total ? `${fmtSize(g.mem_used || 0)} of ${fmtSize(g.mem_total)}` : null],
+      ['Temperature', g.temp_c != null ? g.temp_c.toFixed(0) + ' °C' : null],
+      ['Power', g.power_w != null ? g.power_w.toFixed(0) + ' W' : null],
+      ['Clock', g.freq_mhz != null ? g.freq_mhz.toFixed(0) + ' MHz' : null],
+      ['Source', g.source],
+    ].filter(r => r[1] != null);
+    return `<div class="card gpu"><h2>${esc(g.name)} <small>${esc(g.vendor)}</small></h2>` +
+      (g.util != null ? meterHTML(g.util) : '') + (memP != null ? meterHTML(memP, true) : '') +
+      `<div class="kv">${kv.map(([k, v]) => `<span>${k}</span><b>${esc(v)}</b>`).join('')}</div></div>`;
+  }).join('') || `<div class="card gpu"><h2>Graphics cards</h2><div class="empty">No GPU detected. NVIDIA cards need <code>nvidia-smi</code>; AMD and Intel are read from <code>/sys/class/drm</code>. Inside a container the GPU must be passed through.</div></div>`;
+
+  /* History */
+  for (const [k, v] of [['cpu', cpu.usage], ['mem', mp]]) {
+    hist[k].push({ t: s.time, v });
+    if (hist[k].length > HISTORY) hist[k].shift();
+    charts[k].data = hist[k];
+    drawChart(charts[k]);
+  }
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/api/system');
+    if (!r.ok) throw new Error(r.statusText);
+    render(await r.json());
+  } catch (e) {
+    $('#host').textContent = 'Connection lost: ' + e.message;
+    $('#host').classList.add('err');
+  }
+  setTimeout(tick, 1000);
+}
+tick();
+</script>
+</body>
+</html>

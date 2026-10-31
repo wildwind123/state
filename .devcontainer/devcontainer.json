@@ -1,0 +1,59 @@
+{
+    "name": "systemmonitor (C)",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "HTTP_PROXY": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+            "HTTPS_PROXY": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+            "NO_PROXY": "localhost,127.0.0.1",
+            "http_proxy": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+            "https_proxy": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+            "no_proxy": "localhost,127.0.0.1"
+        },
+        "options": [
+            "--add-host=host.docker.internal:host-gateway",
+            "--add-host=host.external:${localEnv:HOST_IP:host-gateway}"
+        ]
+    },
+    "runArgs": [
+        "--name=systemmonitor-dev-${localEnv:SYSTEMMONITOR_INSTANCE:default}",
+        "--add-host=host.docker.internal:host-gateway",
+        "--add-host=host.external:${localEnv:HOST_IP:host-gateway}",
+        "--env-file=.devcontainer/.env",
+        "--cap-add=SYS_PTRACE",
+        "--security-opt=seccomp=unconfined"
+    ],
+    "mounts": [
+        "source=claude,target=/home/vscode/.claude,type=volume,consistency=cached",
+        "source=vscode-server-systemmonitor,target=/home/vscode/.vscode-server,type=volume,consistency=cached",
+        "source=systemmonitor-ccache,target=/home/vscode/.ccache,type=volume,consistency=cached"
+    ],
+    "containerEnv": {
+        "CONTAINER_NAME": "systemmonitor-dev-${localEnv:SYSTEMMONITOR_INSTANCE:default}",
+        "HTTP_PROXY": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+        "HTTPS_PROXY": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+        "NO_PROXY": "localhost,127.0.0.1,host.docker.internal,host.external",
+        "http_proxy": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+        "https_proxy": "${localEnv:VPN_DOCKER_HTTP_PROXY}",
+        "no_proxy": "localhost,127.0.0.1,host.docker.internal,host.external",
+        "PROJECT_NAME": "${localWorkspaceFolderBasename}",
+        "WORKSPACE_DIR": "${containerWorkspaceFolder}",
+        "CCACHE_DIR": "/home/vscode/.ccache"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "anthropic.claude-code",
+                "llvm-vs-code-extensions.vscode-clangd",
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "ms-vscode.makefile-tools"
+            ],
+            "settings": {
+                "C_Cpp.intelliSenseEngine": "disabled",
+                "clangd.arguments": ["--background-index", "--compile-commands-dir=${workspaceFolder}/build"]
+            }
+        }
+    },
+    "remoteUser": "vscode"
+}
