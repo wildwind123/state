@@ -111,7 +111,10 @@ jobs:
           sudo ls -la /var/cache/state/
           sudo rm -rf /etc/systemd/system/state.service.d
           sudo apt-get purge -y state
-          if command -v state; then echo "::error::state is still installed after purge"; exit 1; fi
+          # Not "command -v": bash caches command paths and would still report /usr/bin/state.
+          if [ -e /usr/bin/state ] || dpkg -s state >/dev/null 2>&1; then
+            echo "::error::state is still installed after purge"; exit 1
+          fi
           [ ! -e /var/cache/private/state ]
 
       - name: Show service log
