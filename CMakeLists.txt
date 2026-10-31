@@ -57,6 +57,20 @@ add_executable(stat
     ${WEB_C}
 )
 target_include_directories(stat PRIVATE src dirstat sysinfo)
+
+# Version shown by --version: -DSTAT_VERSION=v1.2.3 (CI passes the tag), else git describe.
+set(STAT_VERSION "" CACHE STRING "Version string, e.g. v0.0.1")
+if(STAT_VERSION)
+    set(version ${STAT_VERSION})
+else()
+    execute_process(COMMAND git describe --tags --always --dirty
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    OUTPUT_VARIABLE version OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT version)
+        set(version dev)
+    endif()
+endif()
+target_compile_definitions(stat PRIVATE STAT_VERSION="${version}")
 target_link_libraries(stat PRIVATE Threads::Threads)
 
 if(WIN32)

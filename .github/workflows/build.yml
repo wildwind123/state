@@ -1,0 +1,139 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    # Oldest supported runner: the binary then also runs on older distributions (glibc 2.35+).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="dev-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTAT_VERSION=${{ steps.version.outputs.version }}
+          cmake --build build
+
+      - name: Smoke test
+        run: |
+          set -x
+          export STAT_CACHE_DIR="$RUNNER_TEMP/cache"
+          ./build/stat --version
+          ./build/stat
+          ./build/stat --json | python3 -m json.tool > /dev/null
+          ./build/stat dirstat --scan /usr/share -q
+          ./build/stat dirstat --tree /usr/share/doc -d 1 -n 5
+          ./build/stat -s 127.0.0.1:8084 &
+          for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8084/api/system | python3 -m json.tool > /dev/null
+          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=/usr/share&depth=1' | python3 -m json.tool > /dev/null
+          curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
+          kill %1
+
+      - name: Package
+        run: |
+          name=stat-${{ steps.version.outputs.version }}-linux-x86_64
+          mkdir "$name" && cp build/stat README.md "$name/"
+          tar czf "$name.tar.gz" "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: stat-*.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            zip
+            curl
+
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="dev-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTAT_VERSION=${{ steps.version.outputs.version }}
+          cmake --build build
+
+      - name: Smoke test
+        run: |
+          set -x
+          export STAT_CACHE_DIR="$(cygpath -m "$RUNNER_TEMP")/cache"
+          ./build/stat.exe --version
+          ./build/stat.exe
+          ./build/stat.exe dirstat --scan 'C:/Windows/System32/drivers' -q
+          ./build/stat.exe dirstat --tree 'c:\windows\system32\drivers' -d 1 -n 5
+          ./build/stat.exe -s 127.0.0.1:8084 &
+          for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8084/api/system
+          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=C:/Windows/System32/drivers&depth=1' > /dev/null
+          curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
+          kill %1 || taskkill //F //IM stat.exe
+
+      - name: Package
+        run: |
+          name=stat-${{ steps.version.outputs.version }}-windows-x86_64
+          mkdir "$name" && cp build/stat.exe README.md "$name/"
+          zip -r "$name.zip" "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: stat-*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Checksums
+        run: sha256sum stat-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tags with a suffix (v1.0.0-alpha.0, -beta, -rc.1) are marked as pre-releases.
+          pre=""
+          [[ "$GITHUB_REF_NAME" == *-* ]] && pre="--prerelease"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --generate-notes $pre \
+            stat-* SHA256SUMS.txt

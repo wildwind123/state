@@ -35,6 +35,87 @@ On api dirstast, should return result, which will used show Squares on html, lik
 
 ---
 
+## Screenshots
+
+**Overview** (`/`): CPU, memory, disks and free space, GPU, updated every second.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png">
+  <img alt="Overview page: CPU, memory, disk and GPU tiles, 2-minute CPU and memory charts, per-core usage, memory breakdown, disk table" src="docs/screenshots/overview.png">
+</picture>
+
+**Dirstat** (`/dirstat`): which folders and files take up space, drawn as a treemap like WinDirStat. Click a square to zoom in.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dirstat-dark.png">
+  <img alt="Dirstat page: treemap of /usr, with folder contents, file extensions and cached scans in the side panel" src="docs/screenshots/dirstat.png">
+</picture>
+
+**Terminal**
+
+```text
+$ stat
+67a87689fdf9 · Linux 6.12.107+deb13-amd64 · up 5h 41m · 2026-10-31 05:36:30
+
+CPU      Intel(R) Core(TM) i5-8400 CPU @ 2.80GHz · 6 cores · load 1.47 1.18 0.88
+         [###                           ]  10.2%
+           0 [#         ]   6%    1 [#         ]   8%    2 [          ]   4%    3 [#         ]  12%
+           4 [###       ]  25%    5 [          ]   4%
+
+Memory   [################              ]  52.7%  8.2 GiB used of 15.5 GiB · 7.3 GiB available
+Swap     [#########                     ]  30.6%  4.9 GiB used of 15.9 GiB
+
+Disks
+  MOUNT    TYPE           SIZE       USED       FREE                USE%
+  /        overlay     1.8 TiB  840.8 GiB  883.0 GiB  [#####     ]   49%
+
+GPU
+  Intel Graphics (card0)
+         usage not available · 350 MHz
+```
+
+```text
+$ stat dirstat --tree /usr -d 1 -n 4
+Path:    /usr
+Scanned: 2026-10-31 05:34:35 (1 minutes ago)
+Total:   3.3 GiB in 48360 items
+
+   3.3 GiB 100.0% [####################]  /usr/
+   2.2 GiB  64.9% [#############       ]  ├── lib/
+ 476.6 MiB  14.0% [###                 ]  ├── share/
+ 256.8 MiB   7.5% [##                  ]  ├── bin/
+ 153.0 MiB   4.5% [#                   ]  ├── libexec/
+ 311.4 MiB   9.1% [##                  ]  └── … 9 more
+```
+
+## Download
+
+Prebuilt binaries for Linux (x86_64) and Windows (x86_64, Windows 10+) are on the
+[Releases](https://github.com/wildwind123/state/releases) page. Each one is a single
+file with nothing to install:
+
+```bash
+# Linux
+tar xzf stat-*-linux-x86_64.tar.gz
+./stat-*-linux-x86_64/stat
+```
+
+On Windows, unzip `stat-…-windows-x86_64.zip` and run `stat.exe` from a terminal
+(`stat.exe -s 127.0.0.1:8084`, then open http://127.0.0.1:8084/).
+
+`SHA256SUMS.txt` in each release lists checksums for verifying downloads.
+
+### Making a release
+
+Push a tag that starts with `v`. GitHub Actions builds both platforms, runs smoke
+tests, and publishes the release. Tags with a suffix such as `-alpha.0` are marked
+as pre-releases.
+
+```bash
+git tag v0.0.1-alpha.0
+git push origin v0.0.1-alpha.0
+```
+
 ## Build
 
 ```bash
@@ -130,6 +211,7 @@ The "Analyze →" link next to each disk on the overview page opens that mount p
 | method | endpoint | description |
 |---|---|---|
 | GET | `/api/system` | snapshot: cpu, memory, disks, gpus (CPU sampled every 1 s, GPU every 2 s) |
+| GET | `/api/system/history` | last 2 minutes of CPU and memory usage, one sample per second |
 | GET | `/api/dirstat?path=/usr&depth=3&limit=1000&min=0.0005` | tree from cache |
 | POST | `/api/dirstat/scan?path=/` | start a background scan (`202`, or `409` if one is running) |
 | GET | `/api/dirstat/status` | progress of the current/last scan |

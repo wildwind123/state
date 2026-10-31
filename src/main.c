@@ -17,6 +17,7 @@
 static void usage(FILE *out)
 {
     fputs("Usage:\n"
+          "  stat -V, --version\n"
           "  stat [-j, --json]                 system overview: CPU, memory, disks, GPU\n"
           "  stat -s, --server [HOST:PORT]     run the HTTP API and web UI (default " DEFAULT_ADDR ")\n"
           "  stat dirstat -s, --scan [PATH]    scan disk usage under PATH and cache the result\n"
@@ -247,6 +248,10 @@ int main(int argc, char **argv)
     const char *cmd = argv[1];
     if (strcmp(cmd, "-j") == 0 || strcmp(cmd, "--json") == 0)
         return overview(1);
+    if (strcmp(cmd, "-V") == 0 || strcmp(cmd, "--version") == 0) {
+        puts("stat " STAT_VERSION);
+        return 0;
+    }
     if (strcmp(cmd, "-h") == 0 || strcmp(cmd, "--help") == 0) {
         usage(stdout);
         return 0;

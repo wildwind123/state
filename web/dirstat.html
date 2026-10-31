@@ -162,10 +162,12 @@ async function api(url, opts) {
 }
 
 /* ---------- colors: files by extension, like WinDirStat ---------- */
+/* "libLLVM.so.19.1" counts as .so: trailing version numbers are skipped. */
 const extOf = n => {
   if (n.type !== 'file') return n.type;
-  const i = n.name.lastIndexOf('.');
-  return i > 0 && i < n.name.length - 1 ? n.name.slice(i + 1).toLowerCase() : '(none)';
+  const parts = n.name.toLowerCase().split('.');
+  while (parts.length > 2 && /^\d+$/.test(parts[parts.length - 1])) parts.pop();
+  return parts.length > 1 && parts[0] !== '' && parts[parts.length - 1] ? parts[parts.length - 1] : '(none)';
 };
 const PALETTE = [210, 25, 130, 280, 50, 175, 330, 95, 0, 245, 150, 305];
 let extHue = new Map();

@@ -57,6 +57,15 @@ static struct {
     size_t ngpus;
 } g_sys = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
+/* Last two minutes of CPU and memory usage, so charts are full when a page opens. */
+#define HISTORY_LEN 120
+static struct {
+    int64_t t;
+    double cpu;
+    double mem;
+} g_hist[HISTORY_LEN];
+static size_t g_hist_len, g_hist_next; /* guarded by g_sys.lock */
+
 static si_cpu_sample g_prev_sample;
 
 /* Takes one CPU sample (and optionally GPU) and publishes it. */
@@ -74,7 +83,16 @@ static void sample_once(int with_gpu)
     if (with_gpu)
         si_gpus_read(&gpus, &ngpus);
 
+    si_mem m;
+    double mem_pct = si_mem_read(&m) == 0 && m.total ? 100.0 * (double)m.used / (double)m.total : 0;
+
     pthread_mutex_lock(&g_sys.lock);
+    g_hist[g_hist_next].t = (int64_t)time(NULL);
+    g_hist[g_hist_next].cpu = c.usage;
+    g_hist[g_hist_next].mem = mem_pct;
+    g_hist_next = (g_hist_next + 1) % HISTORY_LEN;
+    if (g_hist_len < HISTORY_LEN)
+        g_hist_len++;
     si_cpu_free(&g_sys.cpu);
     g_sys.cpu = c;
     if (with_gpu) {
@@ -505,6 +523,23 @@ static void handle_system(sock_t fd, const http_req *req)
     respond_sb(fd, req, 200, &b);
 }
 
+static void handle_history(sock_t fd, const http_req *req)
+{
+    sbuf b;
+    sb_init(&b);
+    sb_puts(&b, "{\"samples\":[");
+    pthread_mutex_lock(&g_sys.lock);
+    size_t start = (g_hist_next + HISTORY_LEN - g_hist_len) % HISTORY_LEN;
+    for (size_t i = 0; i < g_hist_len; i++) {
+        size_t k = (start + i) % HISTORY_LEN;
+        sb_printf(&b, "%s{\"t\":%" PRId64 ",\"cpu\":%.1f,\"mem\":%.1f}", i ? "," : "", g_hist[k].t,
+                  g_hist[k].cpu, g_hist[k].mem);
+    }
+    pthread_mutex_unlock(&g_sys.lock);
+    sb_puts(&b, "]}");
+    respond_sb(fd, req, 200, &b);
+}
+
 static void handle(sock_t fd, const http_req *req)
 {
     int get = strcmp(req->method, "GET") == 0;
@@ -525,6 +560,8 @@ static void handle(sock_t fd, const http_req *req)
         else
             respond(fd, req, 200, "text/html; charset=utf-8", (const char *)web_dirstat_html,
                     web_dirstat_html_len);
+    } else if (strcmp(p, "/api/system/history") == 0) {
+        get ? handle_history(fd, req) : respond_error(fd, req, 405, "use GET", NULL);
     } else if (strcmp(p, "/api/system") == 0) {
         get ? handle_system(fd, req) : respond_error(fd, req, 405, "use GET", NULL);
     } else if (strcmp(p, "/api/dirstat") == 0) {
@@ -672,6 +709,7 @@ int server_run(const char *addr)
     char cache[PATH_MAX];
     ds_cache_dir(cache, sizeof cache);
     int v6 = strchr(host, ':') != NULL;
+    printf("stat " STAT_VERSION "\n");
     printf("stat server listening on http://%s%s%s:%s/\n", v6 ? "[" : "",
            host[0] ? host : "0.0.0.0", v6 ? "]" : "", port);
     printf("dirstat: http://%s%s%s:%s/dirstat\n", v6 ? "[" : "", host[0] ? host : "0.0.0.0",

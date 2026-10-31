@@ -233,7 +233,7 @@ new ResizeObserver(() => { drawChart(charts.cpu); drawChart(charts.mem); }).obse
 /* ---------- render ---------- */
 function render(s) {
   $('#host').classList.remove('err');
-  $('#host').textContent = `${s.hostname} · ${s.kernel} · up ${fmtUptime(s.uptime_s)}`;
+  $('#host').textContent = `${s.hostname} · ${s.kernel} · up ${fmtUptime(s.uptime_s)} · stat ${s.version}`;
 
   /* CPU */
   const cpu = s.cpu;
@@ -318,6 +318,8 @@ function render(s) {
 
   /* History */
   for (const [k, v] of [['cpu', cpu.usage], ['mem', mp]]) {
+    const last = hist[k][hist[k].length - 1];
+    if (last && last.t >= s.time) continue;
     hist[k].push({ t: s.time, v });
     if (hist[k].length > HISTORY) hist[k].shift();
     charts[k].data = hist[k];
@@ -336,7 +338,12 @@ async function tick() {
   }
   setTimeout(tick, 1000);
 }
-tick();
+/* The server keeps the last two minutes, so the charts start full. */
+fetch('/api/system/history').then(r => r.ok ? r.json() : { samples: [] }).catch(() => ({ samples: [] })).then(h => {
+  hist.cpu = h.samples.map(x => ({ t: x.t, v: x.cpu }));
+  hist.mem = h.samples.map(x => ({ t: x.t, v: x.mem }));
+  tick();
+});
 </script>
 </body>
 </html>
