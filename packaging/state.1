@@ -1,0 +1,79 @@
+.TH STATE 1 "2026" "state" "User Commands"
+.SH NAME
+state \- system monitor: CPU, memory, disks, GPU and disk-usage treemap
+.SH SYNOPSIS
+.B state
+.RB [ \-j | \-\-json ]
+.br
+.B state
+.BR \-s | \-\-server
+.RI [ HOST:PORT ]
+.br
+.B state dirstat
+.BR \-s | \-\-scan
+.RI [ PATH ]
+.RI [ options ]
+.br
+.B state dirstat
+.BR \-t | \-\-tree
+.RI [ PATH ]
+.RI [ options ]
+.br
+.B state dirstat
+.BR \-l | \-\-list
+.SH DESCRIPTION
+Without arguments,
+.B state
+prints CPU (total and per core), memory, swap, disk free space and GPU usage.
+.PP
+.B state dirstat \-\-scan
+measures which folders and files take up space under
+.I PATH
+and caches the result.
+.B \-\-tree
+shows a cached result for any path inside a scan, with the time it was scanned.
+.PP
+.B state \-s
+serves a web UI (overview at /, disk-usage treemap at /dirstat) and a JSON API
+on
+.I HOST:PORT
+(default 127.0.0.1:8084).
+.SH OPTIONS
+.TP
+.BR \-d ", " \-\-depth " " \fIN\fR
+tree levels to show (default 2, 0 = unlimited)
+.TP
+.BR \-n ", " \-\-top " " \fIN\fR
+biggest entries per directory (default 10, 0 = all)
+.TP
+.BR \-x ", " \-\-one\-file\-system
+do not descend into other filesystems while scanning
+.TP
+.BR \-j ", " \-\-json
+print JSON instead of text
+.TP
+.BR \-q ", " \-\-quiet
+no progress or summary output
+.TP
+.BR \-V ", " \-\-version
+print the version
+.SH ENVIRONMENT
+.TP
+.B STATE_CACHE_DIR
+where scans are cached; default
+.I $XDG_CACHE_HOME/state/dirstat
+or
+.IR ~/.cache/state/dirstat .
+.SH FILES
+.TP
+.I /usr/lib/systemd/system/state.service
+optional service for the web UI (not enabled by default:
+.BR "systemctl enable \-\-now state" ).
+It caches scans in
+.IR /var/cache/state .
+.SH SEE ALSO
+.BR du (1),
+.BR df (1),
+.BR free (1)
+.PP
+https://github.com/wildwind123/state

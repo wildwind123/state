@@ -30,6 +30,7 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=${{ steps.version.outputs.version }}
           cmake --build build
+          (cd build && cpack -G DEB)
 
       # Every output is saved; on failure the reason is posted as a (public) annotation.
       - name: Smoke test
@@ -38,6 +39,9 @@ jobs:
           export STATE_CACHE_DIR="$RUNNER_TEMP/cache"
           out="$RUNNER_TEMP/smoke"
           mkdir -p "$out"
+          # Is anything already listening on the default port on this runner?
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8084/ || true)
+          echo "::notice title=port 8084 before start::HTTP status $code (000 = nothing listening)"
           # get URL FILE: fails with the response body when the status is not 200
           get() {
             code=$(curl -sS -o "$2" -w '%{http_code}' "$1") || code="no response"
@@ -84,16 +88,51 @@ jobs:
           name: linux-smoke-output
           path: ${{ runner.temp }}/smoke
 
+      # Installs the .deb, runs the packaged systemd service (on a free port), then purges it.
+      - name: Test .deb package
+        run: |
+          set -x
+          sudo apt-get install -y ./build/state-*.deb
+          dpkg -L state
+          state --version
+          test -f /usr/share/man/man1/state.1.gz
+          port=$((20000 + RANDOM % 20000))
+          base="http://127.0.0.1:$port"
+          sudo mkdir -p /etc/systemd/system/state.service.d
+          printf '[Service]\nExecStart=\nExecStart=/usr/bin/state -s 127.0.0.1:%s\n' "$port" |
+            sudo tee /etc/systemd/system/state.service.d/port.conf
+          sudo systemctl daemon-reload
+          sudo systemctl start state
+          for i in $(seq 30); do curl -fs -o /dev/null "$base/" && break; sleep 1; done
+          curl -fsS "$base/api/system" | python3 -m json.tool > /dev/null
+          curl -fsS -X POST "$base/api/dirstat/scan?path=/usr/share/doc"
+          for i in $(seq 30); do curl -fsS "$base/api/dirstat/status" | grep -q '"running":false' && break; sleep 1; done
+          curl -fsS "$base/api/dirstat?path=/usr/share/doc&depth=1" | python3 -m json.tool > /dev/null
+          sudo ls -la /var/cache/state/
+          sudo rm -rf /etc/systemd/system/state.service.d
+          sudo apt-get purge -y state
+          if command -v state; then echo "::error::state is still installed after purge"; exit 1; fi
+          [ ! -e /var/cache/private/state ]
+
+      - name: Show service log
+        if: failure()
+        run: |
+          sudo journalctl -u state --no-pager || true
+          echo "::warning title=state.service log::$(sudo journalctl -u state --no-pager -n 40 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+
       - name: Package
         run: |
           name=state-${{ steps.version.outputs.version }}-linux-x86_64
           mkdir "$name" && cp build/state README.md LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
+          cp build/state-*.deb .
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: state-*.tar.gz
+          path: |
+            state-*.tar.gz
+            state-*.deb
 
   windows:
     runs-on: windows-latest

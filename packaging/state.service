@@ -1,0 +1,21 @@
+# Web UI and API on http://127.0.0.1:8084/ (not enabled by default):
+#   sudo systemctl enable --now state
+# It runs as an unprivileged user, so dirstat only sees what every user can read.
+# To change the address: sudo systemctl edit state
+[Unit]
+Description=state system monitor (web UI and API)
+Documentation=https://github.com/wildwind123/state
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/state -s 127.0.0.1:8084
+Environment=STATE_CACHE_DIR=/var/cache/state
+CacheDirectory=state
+DynamicUser=yes
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

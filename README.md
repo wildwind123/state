@@ -90,15 +90,41 @@ Total:   3.3 GiB in 48360 items
 
 ## Download
 
-Prebuilt binaries for Linux (x86_64) and Windows (x86_64, Windows 10+) are on the
-[Releases](https://github.com/wildwind123/state/releases) page. Each one is a single
-file with nothing to install:
+Prebuilt packages for Linux (x86_64) and Windows (x86_64, Windows 10+) are on the
+[Releases](https://github.com/wildwind123/state/releases) page.
+
+### Debian / Ubuntu (.deb)
+
+For Debian 12+ and Ubuntu 22.04+:
 
 ```bash
-# Linux
-tar xzf state-*-linux-x86_64.tar.gz
-./stat-*-linux-x86_64/stat
+sudo apt install ./state-v0.0.1-alpha.1-amd64.deb
+state                      # overview
+man state                  # manual
 ```
+
+The package installs `/usr/bin/state`, a man page, and an optional systemd service for
+the web UI. The service is **not enabled** automatically:
+
+```bash
+sudo systemctl enable --now state      # web UI on http://127.0.0.1:8084/
+sudo systemctl edit state              # change the address (override ExecStart)
+```
+
+The service runs as an unprivileged temporary user, so its dirstat scans only see
+files that every user can read, and it caches scans in `/var/cache/state`. Remove the
+package with `sudo apt remove state`; `sudo apt purge state` also deletes the cache.
+
+### Other Linux (.tar.gz)
+
+A single binary with nothing to install:
+
+```bash
+tar xzf state-*-linux-x86_64.tar.gz
+./state-*-linux-x86_64/state
+```
+
+### Windows
 
 On Windows, unzip `state-…-windows-x86_64.zip` and run `state.exe` from a terminal
 (`state.exe -s 127.0.0.1:8084`, then open http://127.0.0.1:8084/).
@@ -107,8 +133,9 @@ On Windows, unzip `state-…-windows-x86_64.zip` and run `state.exe` from a term
 
 ### Making a release
 
-Push a tag that starts with `v`. GitHub Actions builds both platforms, runs smoke
-tests, and publishes the release. Tags with a suffix such as `-alpha.0` are marked
+Push a tag that starts with `v`. GitHub Actions builds both platforms and the `.deb`,
+runs smoke tests (including installing the `.deb` and starting its service), and
+publishes the release. Tags with a suffix such as `-alpha.0` are marked
 as pre-releases.
 
 ```bash
@@ -122,6 +149,13 @@ git push origin v0.0.1-alpha.1
 cmake -S . -B build -G Ninja
 cmake --build build
 ./build/state --help
+```
+
+Build the Debian package (needs `dpkg-dev` and `file`):
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=v0.0.1
+cmake --build build && (cd build && cpack -G DEB)   # -> build/state-v0.0.1-amd64.deb
 ```
 
 

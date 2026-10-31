@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ] && [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+    # Pick up the new binary if the service was already enabled and running.
+    if command -v deb-systemd-invoke >/dev/null; then
+        deb-systemd-invoke try-restart state.service >/dev/null || true
+    fi
+fi
+exit 0

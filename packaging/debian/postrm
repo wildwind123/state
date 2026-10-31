@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
+if [ "$1" = remove ] && command -v deb-systemd-helper >/dev/null; then
+    deb-systemd-helper mask state.service >/dev/null || true
+fi
+if [ "$1" = purge ]; then
+    if command -v deb-systemd-helper >/dev/null; then
+        deb-systemd-helper purge state.service >/dev/null || true
+        deb-systemd-helper unmask state.service >/dev/null || true
+    fi
+    # DynamicUser services keep their cache in /var/cache/private/ behind a symlink.
+    rm -rf /var/cache/state /var/cache/private/state
+fi
+exit 0
