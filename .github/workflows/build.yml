@@ -15,7 +15,7 @@ jobs:
     # Oldest supported runner: the binary then also runs on older distributions (glibc 2.35+).
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Version
         id: version
@@ -28,35 +28,53 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTAT_VERSION=${{ steps.version.outputs.version }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=${{ steps.version.outputs.version }}
           cmake --build build
 
+      # Every output is saved so a failure can be diagnosed from the artifact or the next step.
       - name: Smoke test
         run: |
           set -x
-          export STAT_CACHE_DIR="$RUNNER_TEMP/cache"
-          ./build/stat --version
-          ./build/stat
-          ./build/stat --json | python3 -m json.tool > /dev/null
-          ./build/stat dirstat --scan /usr/share -q
-          ./build/stat dirstat --tree /usr/share/doc -d 1 -n 5
-          ./build/stat -s 127.0.0.1:8084 &
+          export STATE_CACHE_DIR="$RUNNER_TEMP/cache"
+          out="$RUNNER_TEMP/smoke"
+          mkdir -p "$out"
+          ./build/state --version
+          ./build/state > "$out/overview.txt" 2>&1
+          ./build/state --json > "$out/overview.json"
+          python3 -m json.tool "$out/overview.json" > /dev/null
+          ./build/state dirstat --scan /usr/share > "$out/scan.txt" 2>&1
+          ./build/state dirstat --tree /usr/share/doc -d 1 -n 5 > "$out/tree.txt" 2>&1
+          ./build/state -s 127.0.0.1:8084 > "$out/server.log" 2>&1 &
+          server=$!
           for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
-          curl -fsS http://127.0.0.1:8084/api/system | python3 -m json.tool > /dev/null
-          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=/usr/share&depth=1' | python3 -m json.tool > /dev/null
+          curl -fsS http://127.0.0.1:8084/api/system -o "$out/system.json"
+          python3 -m json.tool "$out/system.json" > /dev/null
+          curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=/usr/share&depth=1' -o "$out/dirstat.json"
+          python3 -m json.tool "$out/dirstat.json" > /dev/null
           curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
-          kill %1
+          kill "$server"
+
+      - name: Show smoke test output
+        if: failure()
+        run: |
+          for f in "$RUNNER_TEMP"/smoke/*; do echo "===== $f"; cat "$f"; echo; done
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-smoke-output
+          path: ${{ runner.temp }}/smoke
 
       - name: Package
         run: |
-          name=stat-${{ steps.version.outputs.version }}-linux-x86_64
-          mkdir "$name" && cp build/stat README.md "$name/"
+          name=state-${{ steps.version.outputs.version }}-linux-x86_64
+          mkdir "$name" && cp build/state README.md LICENSE "$name/"
           tar czf "$name.tar.gz" "$name"
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: stat-*.tar.gz
+          path: state-*.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -64,7 +82,7 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -84,34 +102,34 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTAT_VERSION=${{ steps.version.outputs.version }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=${{ steps.version.outputs.version }}
           cmake --build build
 
       - name: Smoke test
         run: |
           set -x
-          export STAT_CACHE_DIR="$(cygpath -m "$RUNNER_TEMP")/cache"
-          ./build/stat.exe --version
-          ./build/stat.exe
-          ./build/stat.exe dirstat --scan 'C:/Windows/System32/drivers' -q
-          ./build/stat.exe dirstat --tree 'c:\windows\system32\drivers' -d 1 -n 5
-          ./build/stat.exe -s 127.0.0.1:8084 &
+          export STATE_CACHE_DIR="$(cygpath -m "$RUNNER_TEMP")/cache"
+          ./build/state.exe --version
+          ./build/state.exe
+          ./build/state.exe dirstat --scan 'C:/Windows/System32/drivers' -q
+          ./build/state.exe dirstat --tree 'c:\windows\system32\drivers' -d 1 -n 5
+          ./build/state.exe -s 127.0.0.1:8084 &
           for i in $(seq 30); do curl -fs -o /dev/null http://127.0.0.1:8084/ && break; sleep 1; done
           curl -fsS http://127.0.0.1:8084/api/system
           curl -fsS 'http://127.0.0.1:8084/api/dirstat?path=C:/Windows/System32/drivers&depth=1' > /dev/null
           curl -fsS -o /dev/null http://127.0.0.1:8084/dirstat
-          kill %1 || taskkill //F //IM stat.exe
+          kill %1 || taskkill //F //IM state.exe
 
       - name: Package
         run: |
-          name=stat-${{ steps.version.outputs.version }}-windows-x86_64
-          mkdir "$name" && cp build/stat.exe README.md "$name/"
+          name=state-${{ steps.version.outputs.version }}-windows-x86_64
+          mkdir "$name" && cp build/state.exe README.md LICENSE "$name/"
           zip -r "$name.zip" "$name"
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: stat-*.zip
+          path: state-*.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -125,7 +143,7 @@ jobs:
           merge-multiple: true
 
       - name: Checksums
-        run: sha256sum stat-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+        run: sha256sum state-* > SHA256SUMS.txt && cat SHA256SUMS.txt
 
       - name: Create release
         env:
@@ -136,4 +154,4 @@ jobs:
           [[ "$GITHUB_REF_NAME" == *-* ]] && pre="--prerelease"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --generate-notes $pre \
-            stat-* SHA256SUMS.txt
+            state-* SHA256SUMS.txt

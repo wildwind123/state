@@ -12,7 +12,7 @@
 
 static void oom(void)
 {
-    fputs("stat: out of memory\n", stderr);
+    fputs("state: out of memory\n", stderr);
     abort();
 }
 

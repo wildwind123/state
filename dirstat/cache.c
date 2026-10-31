@@ -24,22 +24,22 @@ static const char MAGIC[8] = { 'D', 'S', 'T', 'A', 'T', 0, 0, 1 };
 void ds_cache_dir(char *out, size_t len)
 {
     char e[PATH_MAX];
-    if (u8_getenv("STAT_CACHE_DIR", e, sizeof e) == 0) {
+    if (u8_getenv("STATE_CACHE_DIR", e, sizeof e) == 0) {
         snprintf(out, len, "%s", e);
         return;
     }
 #ifdef _WIN32
     if (u8_getenv("LOCALAPPDATA", e, sizeof e) != 0 && u8_getenv("TEMP", e, sizeof e) != 0)
         snprintf(e, sizeof e, "C:/");
-    snprintf(out, len, "%s/stat/dirstat", e);
+    snprintf(out, len, "%s/state/dirstat", e);
 #else
     if (u8_getenv("XDG_CACHE_HOME", e, sizeof e) == 0) {
-        snprintf(out, len, "%s/stat/dirstat", e);
+        snprintf(out, len, "%s/state/dirstat", e);
         return;
     }
     if (u8_getenv("HOME", e, sizeof e) != 0)
         snprintf(e, sizeof e, "/tmp");
-    snprintf(out, len, "%s/.cache/stat/dirstat", e);
+    snprintf(out, len, "%s/.cache/state/dirstat", e);
 #endif
 }
 

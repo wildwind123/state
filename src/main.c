@@ -17,12 +17,12 @@
 static void usage(FILE *out)
 {
     fputs("Usage:\n"
-          "  stat -V, --version\n"
-          "  stat [-j, --json]                 system overview: CPU, memory, disks, GPU\n"
-          "  stat -s, --server [HOST:PORT]     run the HTTP API and web UI (default " DEFAULT_ADDR ")\n"
-          "  stat dirstat -s, --scan [PATH]    scan disk usage under PATH and cache the result\n"
-          "  stat dirstat -t, --tree [PATH]    show the cached result as a tree (alias: --three)\n"
-          "  stat dirstat -l, --list           list cached scans\n"
+          "  state -V, --version\n"
+          "  state [-j, --json]                 system overview: CPU, memory, disks, GPU\n"
+          "  state -s, --server [HOST:PORT]     run the HTTP API and web UI (default " DEFAULT_ADDR ")\n"
+          "  state dirstat -s, --scan [PATH]    scan disk usage under PATH and cache the result\n"
+          "  state dirstat -t, --tree [PATH]    show the cached result as a tree (alias: --three)\n"
+          "  state dirstat -l, --list           list cached scans\n"
           "\n"
           "dirstat options:\n"
           "  -d, --depth N            tree levels to show (default 2, 0 = unlimited)\n"
@@ -32,10 +32,10 @@ static void usage(FILE *out)
           "  -q, --quiet              no progress or summary output\n"
           "\n"
 #ifdef _WIN32
-          "Cache directory: %STAT_CACHE_DIR%, else %LOCALAPPDATA%\\stat\\dirstat\n",
+          "Cache directory: %STATE_CACHE_DIR%, else %LOCALAPPDATA%\\state\\dirstat\n",
 #else
-          "Cache directory: $STAT_CACHE_DIR, else $XDG_CACHE_HOME/stat/dirstat,\n"
-          "else ~/.cache/stat/dirstat\n",
+          "Cache directory: $STATE_CACHE_DIR, else $XDG_CACHE_HOME/state/dirstat,\n"
+          "else ~/.cache/state/dirstat\n",
 #endif
           out);
 }
@@ -72,14 +72,14 @@ static int do_scan(const char *path, const ds_scan_opts *so, const ds_tree_opts 
     if (ds_scan_path(path, so, &s, err, sizeof err) != 0) {
         if (so->progress)
             fputs("\r\033[K", stderr);
-        fprintf(stderr, "stat: %s\n", err);
+        fprintf(stderr, "state: %s\n", err);
         return 1;
     }
     if (so->progress)
         fputs("\r\033[K", stderr);
     int rc = 0;
     if (ds_cache_save(&s, file, sizeof file, err, sizeof err) != 0) {
-        fprintf(stderr, "stat: %s\n", err);
+        fprintf(stderr, "state: %s\n", err);
         rc = 1;
     }
     if (json) {
@@ -111,12 +111,12 @@ static int do_tree(const char *arg, const ds_tree_opts *to, int json)
     }
     ds_cache_entry e;
     if (ds_cache_find(path, &e) != 0) {
-        fprintf(stderr, "stat: no cached scan covers %s\nRun: stat dirstat --scan %s\n", path, path);
+        fprintf(stderr, "state: no cached scan covers %s\nRun: state dirstat --scan %s\n", path, path);
         return 1;
     }
     ds_scan s;
     if (ds_cache_load(e.file, &s) != 0) {
-        fprintf(stderr, "stat: cannot read cache file %s\n", e.file);
+        fprintf(stderr, "state: cannot read cache file %s\n", e.file);
         ds_cache_entry_free(&e);
         return 1;
     }
@@ -126,7 +126,7 @@ static int do_tree(const char *arg, const ds_tree_opts *to, int json)
     if (!n) {
         char when[64];
         fmt_time(s.scanned_at, when, sizeof when);
-        fprintf(stderr, "stat: %s did not exist when %s was scanned (%s)\n", path, s.root, when);
+        fprintf(stderr, "state: %s did not exist when %s was scanned (%s)\n", path, s.root, when);
         rc = 1;
     } else {
         show(&s, n, path, to, json);
@@ -140,7 +140,7 @@ static int do_list(int json)
     ds_cache_entry *list;
     size_t n;
     if (ds_cache_list(&list, &n) != 0) {
-        perror("stat: cache directory");
+        perror("state: cache directory");
         return 1;
     }
     if (json) {
@@ -150,7 +150,7 @@ static int do_list(int json)
         puts(b.data);
         sb_free(&b);
     } else if (n == 0) {
-        puts("No cached scans. Run: stat dirstat --scan PATH");
+        puts("No cached scans. Run: state dirstat --scan PATH");
     } else {
         printf("%-19s  %10s  %10s  %s\n", "SCANNED", "SIZE", "ITEMS", "PATH");
         for (size_t i = 0; i < n; i++) {
@@ -209,7 +209,7 @@ static int cmd_dirstat(int argc, char **argv)
     case M_LIST:
         return do_list(json);
     default:
-        fputs("stat dirstat: choose --scan, --tree or --list\n\n", stderr);
+        fputs("state dirstat: choose --scan, --tree or --list\n\n", stderr);
         usage(stderr);
         return 2;
     }
@@ -249,7 +249,7 @@ int main(int argc, char **argv)
     if (strcmp(cmd, "-j") == 0 || strcmp(cmd, "--json") == 0)
         return overview(1);
     if (strcmp(cmd, "-V") == 0 || strcmp(cmd, "--version") == 0) {
-        puts("stat " STAT_VERSION);
+        puts("state " STATE_VERSION);
         return 0;
     }
     if (strcmp(cmd, "-h") == 0 || strcmp(cmd, "--help") == 0) {
@@ -260,7 +260,7 @@ int main(int argc, char **argv)
         return server_run(argc > 2 ? argv[2] : DEFAULT_ADDR);
     if (strcmp(cmd, "dirstat") == 0)
         return cmd_dirstat(argc - 1, argv + 1);
-    fprintf(stderr, "stat: unknown command '%s'\n\n", cmd);
+    fprintf(stderr, "state: unknown command '%s'\n\n", cmd);
     usage(stderr);
     return 2;
 }

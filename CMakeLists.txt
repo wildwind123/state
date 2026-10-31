@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(stat C)
+project(state C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -42,7 +42,7 @@ else()
     )
 endif()
 
-add_executable(stat
+add_executable(state
     src/main.c
     src/util.c
     src/compat.c
@@ -56,12 +56,12 @@ add_executable(stat
     ${PLATFORM_SRC}
     ${WEB_C}
 )
-target_include_directories(stat PRIVATE src dirstat sysinfo)
+target_include_directories(state PRIVATE src dirstat sysinfo)
 
-# Version shown by --version: -DSTAT_VERSION=v1.2.3 (CI passes the tag), else git describe.
-set(STAT_VERSION "" CACHE STRING "Version string, e.g. v0.0.1")
-if(STAT_VERSION)
-    set(version ${STAT_VERSION})
+# Version shown by --version: -DSTATE_VERSION=v1.2.3 (CI passes the tag), else git describe.
+set(STATE_VERSION "" CACHE STRING "Version string, e.g. v0.0.1")
+if(STATE_VERSION)
+    set(version ${STATE_VERSION})
 else()
     execute_process(COMMAND git describe --tags --always --dirty
                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -70,12 +70,12 @@ else()
         set(version dev)
     endif()
 endif()
-target_compile_definitions(stat PRIVATE STAT_VERSION="${version}")
-target_link_libraries(stat PRIVATE Threads::Threads)
+target_compile_definitions(state PRIVATE STATE_VERSION="${version}")
+target_link_libraries(state PRIVATE Threads::Threads)
 
 if(WIN32)
-    # Windows 10 APIs (GPU counters); static so stat.exe needs no MinGW DLLs.
-    target_compile_definitions(stat PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 UNICODE _UNICODE)
-    target_link_libraries(stat PRIVATE ws2_32 pdh psapi dxgi dxguid shell32 advapi32)
-    target_link_options(stat PRIVATE -static)
+    # Windows 10 APIs (GPU counters); static so state.exe needs no MinGW DLLs.
+    target_compile_definitions(state PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 UNICODE _UNICODE)
+    target_link_libraries(state PRIVATE ws2_32 pdh psapi dxgi dxguid shell32 advapi32)
+    target_link_options(state PRIVATE -static)
 endif()

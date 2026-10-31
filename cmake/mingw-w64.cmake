@@ -1,4 +1,4 @@
-# Cross-compile stat.exe from Linux:
+# Cross-compile state.exe from Linux:
 #   cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
 #   cmake --build build-win
 set(CMAKE_SYSTEM_NAME Windows)

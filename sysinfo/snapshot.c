@@ -37,7 +37,7 @@ void si_snapshot_json(sbuf *b, const si_snapshot *s)
 {
     const si_cpu *c = &s->cpu;
     const si_mem *m = &s->mem;
-    sb_puts(b, "{\"version\":\"" STAT_VERSION "\",\"hostname\":");
+    sb_puts(b, "{\"version\":\"" STATE_VERSION "\",\"hostname\":");
     sb_json_str(b, s->hostname);
     sb_puts(b, ",\"kernel\":");
     sb_json_str(b, s->kernel);

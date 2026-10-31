@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>stat overview</title>
+<title>state overview</title>
 <style>
 :root {
   color-scheme: light;
@@ -104,7 +104,7 @@ td.use .row { display: flex; justify-content: space-between; font-size: 12px; co
 </head>
 <body>
 <header>
-  <h1><a href="/">stat</a></h1>
+  <h1><a href="/">state</a></h1>
   <nav><a href="/" class="on">Overview</a><a href="/dirstat">Dirstat</a></nav>
   <div id="host">Connecting…</div>
 </header>
@@ -233,7 +233,7 @@ new ResizeObserver(() => { drawChart(charts.cpu); drawChart(charts.mem); }).obse
 /* ---------- render ---------- */
 function render(s) {
   $('#host').classList.remove('err');
-  $('#host').textContent = `${s.hostname} · ${s.kernel} · up ${fmtUptime(s.uptime_s)} · stat ${s.version}`;
+  $('#host').textContent = `${s.hostname} · ${s.kernel} · up ${fmtUptime(s.uptime_s)} · state ${s.version}`;
 
   /* CPU */
   const cpu = s.cpu;

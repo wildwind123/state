@@ -2,7 +2,7 @@
 
 This program for monitoryng system info.
 
-Program name `stat`
+Program name `state`
 
 Should support `linux` and `windows`.
 
@@ -22,11 +22,11 @@ Example usage.
 ```bash
 # reasearch all system space, 
 # after that, should cache result
-stat dirstat -s (--scan) /
+state dirstat -s (--scan) /
 
 # show like three from cached result
 ## should visible when was scanned this path
-stat dirstat -t (--three) /
+state dirstat -t (--three) /
 
 ```
 
@@ -54,7 +54,7 @@ On api dirstast, should return result, which will used show Squares on html, lik
 **Terminal**
 
 ```text
-$ stat
+$ state
 67a87689fdf9 · Linux 6.12.107+deb13-amd64 · up 5h 41m · 2026-10-31 05:36:30
 
 CPU      Intel(R) Core(TM) i5-8400 CPU @ 2.80GHz · 6 cores · load 1.47 1.18 0.88
@@ -75,7 +75,7 @@ GPU
 ```
 
 ```text
-$ stat dirstat --tree /usr -d 1 -n 4
+$ state dirstat --tree /usr -d 1 -n 4
 Path:    /usr
 Scanned: 2026-10-31 05:34:35 (1 minutes ago)
 Total:   3.3 GiB in 48360 items
@@ -96,12 +96,12 @@ file with nothing to install:
 
 ```bash
 # Linux
-tar xzf stat-*-linux-x86_64.tar.gz
+tar xzf state-*-linux-x86_64.tar.gz
 ./stat-*-linux-x86_64/stat
 ```
 
-On Windows, unzip `stat-…-windows-x86_64.zip` and run `stat.exe` from a terminal
-(`stat.exe -s 127.0.0.1:8084`, then open http://127.0.0.1:8084/).
+On Windows, unzip `state-…-windows-x86_64.zip` and run `state.exe` from a terminal
+(`state.exe -s 127.0.0.1:8084`, then open http://127.0.0.1:8084/).
 
 `SHA256SUMS.txt` in each release lists checksums for verifying downloads.
 
@@ -121,23 +121,20 @@ git push origin v0.0.1-alpha.0
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build
-./build/stat --help
+./build/state --help
 ```
 
-> The binary is called `stat`, the same as the coreutils `stat` command. Run it as
-> `./build/stat`, or put it on your `PATH` under another name, so scripts that use
-> `/usr/bin/stat` keep working.
 
 ### Windows
 
-`stat.exe` is built with MinGW-w64 (Windows 10 or newer). It is a single static
+`state.exe` is built with MinGW-w64 (Windows 10 or newer). It is a single static
 file with no DLLs to ship.
 
 Cross-compile from Linux (the dev container has the toolchain):
 
 ```bash
 cmake -S . -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
-cmake --build build-win          # -> build-win/stat.exe
+cmake --build build-win          # -> build-win/state.exe
 ```
 
 Or build on Windows in an [MSYS2](https://www.msys2.org/) UCRT64 shell:
@@ -161,7 +158,7 @@ either `C:\Users` or `C:/Users`, and matching is case-insensitive.
 | GPU | `nvidia-smi`; AMD and Intel via `/sys/class/drm` | `nvidia-smi`; any vendor via DXGI + the "GPU Engine" performance counters Task Manager uses |
 | Dirstat sizes | allocated blocks; hard links once | size rounded up to the cluster size (real allocation for compressed, sparse and OneDrive files); hard links counted per link, like Explorer |
 | Links | symlinks not followed | junctions and symlinks not followed |
-| Cache | `~/.cache/stat/dirstat` | `%LOCALAPPDATA%\stat\dirstat` |
+| Cache | `~/.cache/state/dirstat` | `%LOCALAPPDATA%\state\dirstat` |
 
 Run as Administrator to scan folders such as `C:\Windows\System32\config`.
 Otherwise they are counted as unreadable.
@@ -169,12 +166,12 @@ Otherwise they are counted as unreadable.
 ## CLI
 
 ```bash
-stat                             # system overview: CPU, memory, swap, disks/free space, GPU
-stat --json                      # the same as JSON (same format as /api/system)
-stat dirstat --scan /            # scan, cache the result, print a summary
-stat dirstat --tree /usr -d 3    # tree from the cache (also: -t, --three)
-stat dirstat --list              # cached scans and when they were made
-stat dirstat --tree /usr --json  # same JSON as the API
+state                             # system overview: CPU, memory, swap, disks/free space, GPU
+state --json                      # the same as JSON (same format as /api/system)
+state dirstat --scan /            # scan, cache the result, print a summary
+state dirstat --tree /usr -d 3    # tree from the cache (also: -t, --three)
+state dirstat --list              # cached scans and when they were made
+state dirstat --tree /usr --json  # same JSON as the API
 ```
 
 | option | meaning |
@@ -186,19 +183,19 @@ stat dirstat --tree /usr --json  # same JSON as the API
 | `-q, --quiet` | no progress/summary |
 
 `--tree` works for any path inside a cached scan. If you scanned `/`, then
-`stat dirstat -t /home` reads from that scan, and the output shows when the scan ran.
+`state dirstat -t /home` reads from that scan, and the output shows when the scan ran.
 If several scans contain the path, the newest one is used.
 
 Sizes are bytes on disk (like `du`). Hard links are counted once.
 Virtual filesystems (`/proc`, `/sys`, cgroup, …) are skipped.
 
-Cache: `$STAT_CACHE_DIR`, else `$XDG_CACHE_HOME/stat/dirstat`, else `~/.cache/stat/dirstat`
-(Windows: `%LOCALAPPDATA%\stat\dirstat`).
+Cache: `$STATE_CACHE_DIR`, else `$XDG_CACHE_HOME/state/dirstat`, else `~/.cache/state/dirstat`
+(Windows: `%LOCALAPPDATA%\state\dirstat`).
 
 ## Server / API
 
 ```bash
-stat -s 127.0.0.1:8084
+state -s 127.0.0.1:8084
 ```
 
 | page | what it shows |
@@ -239,3 +236,7 @@ GPU data: NVIDIA comes from `nvidia-smi` (it must be installed), AMD from
 its driver does not expose a usage percentage. Values a driver doesn't report are `null`.
 
 - `min`: siblings smaller than this share of the requested node are grouped into `rest`, which keeps responses small enough to draw
+
+## License
+
+[MIT](LICENSE)

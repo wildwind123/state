@@ -652,13 +652,13 @@ int server_run(const char *addr)
 #ifdef _WIN32
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        fprintf(stderr, "stat: cannot initialise Winsock\n");
+        fprintf(stderr, "state: cannot initialise Winsock\n");
         return 1;
     }
 #endif
     char host[256], port[16];
     if (parse_addr(addr, host, sizeof host, port, sizeof port) != 0) {
-        fprintf(stderr, "stat: invalid address '%s' (expected HOST:PORT)\n", addr);
+        fprintf(stderr, "state: invalid address '%s' (expected HOST:PORT)\n", addr);
         return 2;
     }
     struct addrinfo hints = { .ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM,
@@ -667,9 +667,9 @@ int server_run(const char *addr)
     int rc = getaddrinfo(host[0] ? host : NULL, port, &hints, &res);
     if (rc != 0) {
 #ifdef _WIN32
-        fprintf(stderr, "stat: %s: %s\n", addr, gai_strerrorA(rc));
+        fprintf(stderr, "state: %s: %s\n", addr, gai_strerrorA(rc));
 #else
-        fprintf(stderr, "stat: %s: %s\n", addr, gai_strerror(rc));
+        fprintf(stderr, "state: %s: %s\n", addr, gai_strerror(rc));
 #endif
         return 1;
     }
@@ -696,9 +696,9 @@ int server_run(const char *addr)
     freeaddrinfo(res);
     if (lfd == INVALID_SOCKET) {
 #ifdef _WIN32
-        fprintf(stderr, "stat: cannot listen on %s (Winsock error %d)\n", addr, err);
+        fprintf(stderr, "state: cannot listen on %s (Winsock error %d)\n", addr, err);
 #else
-        fprintf(stderr, "stat: cannot listen on %s: %s\n", addr, strerror(err));
+        fprintf(stderr, "state: cannot listen on %s: %s\n", addr, strerror(err));
 #endif
         return 1;
     }
@@ -709,8 +709,8 @@ int server_run(const char *addr)
     char cache[PATH_MAX];
     ds_cache_dir(cache, sizeof cache);
     int v6 = strchr(host, ':') != NULL;
-    printf("stat " STAT_VERSION "\n");
-    printf("stat server listening on http://%s%s%s:%s/\n", v6 ? "[" : "",
+    printf("state " STATE_VERSION "\n");
+    printf("state server listening on http://%s%s%s:%s/\n", v6 ? "[" : "",
            host[0] ? host : "0.0.0.0", v6 ? "]" : "", port);
     printf("dirstat: http://%s%s%s:%s/dirstat\n", v6 ? "[" : "", host[0] ? host : "0.0.0.0",
            v6 ? "]" : "", port);
@@ -727,7 +727,7 @@ int server_run(const char *addr)
         sock_t c = accept(lfd, NULL, NULL);
         if (c == INVALID_SOCKET) {
             if (sock_error() != EINTR)
-                fprintf(stderr, "stat: accept failed (error %d)\n", sock_error());
+                fprintf(stderr, "state: accept failed (error %d)\n", sock_error());
             continue;
         }
         sock_t *arg = xmalloc(sizeof *arg);
