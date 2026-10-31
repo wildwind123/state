@@ -95,7 +95,8 @@ Prebuilt packages for Linux (x86_64) and Windows (x86_64, Windows 10+) are on th
 
 ### Debian / Ubuntu (.deb)
 
-For Debian 12+ and Ubuntu 22.04+:
+For Ubuntu 18.04+, Debian 10+ and other Debian-based distributions (the binary is
+statically linked, so it does not depend on the system's glibc version):
 
 ```bash
 sudo apt install ./state-v0.0.1-alpha.1-amd64.deb
@@ -117,7 +118,7 @@ package with `sudo apt remove state`; `sudo apt purge state` also deletes the ca
 
 ### Other Linux (.tar.gz)
 
-A single binary with nothing to install:
+A single static binary with nothing to install; it runs on any x86_64 Linux:
 
 ```bash
 tar xzf state-*-linux-x86_64.tar.gz
@@ -151,10 +152,11 @@ cmake --build build
 ./build/state --help
 ```
 
-Build the Debian package (needs `dpkg-dev` and `file`):
+Build the Debian package the way releases are built: statically linked with musl
+(needs `musl-tools`, `dpkg-dev` and `file`), so it installs on old distributions too:
 
 ```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=v0.0.1
+CC=musl-gcc cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_STATIC=ON -DSTATE_VERSION=v0.0.1
 cmake --build build && (cd build && cpack -G DEB)   # -> build/state-v0.0.1-amd64.deb
 ```
 

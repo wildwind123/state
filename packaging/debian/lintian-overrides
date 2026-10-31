@@ -1,0 +1,3 @@
+# Built statically with musl on purpose: the same .deb then installs on old
+# releases (Ubuntu 18.04, Debian 10) that have an older glibc than the build machine.
+state: statically-linked-binary [usr/bin/state]

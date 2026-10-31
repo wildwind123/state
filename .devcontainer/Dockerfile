@@ -36,7 +36,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         mingw-w64-x86-64-dev \
         binutils-mingw-w64-x86-64 \
         file \
-        lintian
+        lintian \
+        musl-tools
 
 # Use ccache transparently for gcc/cc/clang
 ENV PATH=/usr/lib/ccache:${PATH} \

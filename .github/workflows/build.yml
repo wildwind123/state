@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   linux:
-    # Oldest supported runner: the binary then also runs on older distributions (glibc 2.35+).
+    # The binary is linked statically with musl, so it runs on any distribution
+    # regardless of its glibc version (see "Test on old distributions").
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
@@ -24,12 +25,14 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: sudo apt-get update && sudo apt-get install -y ninja-build musl-tools
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_VERSION=${{ steps.version.outputs.version }}
+          CC=musl-gcc cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATE_STATIC=ON \
+            -DSTATE_VERSION=${{ steps.version.outputs.version }}
           cmake --build build
+          file build/state | grep -q "statically linked"
           (cd build && cpack -G DEB)
 
       # Every output is saved; on failure the reason is posted as a (public) annotation.
@@ -116,6 +119,21 @@ jobs:
             echo "::error::state is still installed after purge"; exit 1
           fi
           [ ! -e /var/cache/private/state ]
+
+      # Ubuntu 18.04 has glibc 2.27, Debian 10 has 2.28, CentOS 7 has 2.17.
+      - name: Test on old distributions
+        run: |
+          set -x
+          for image in ubuntu:18.04 debian:10; do
+            docker run --rm -v "$PWD/build:/pkg:ro" "$image" sh -ec '
+              dpkg -i /pkg/state-*.deb
+              state --version
+              state
+              state dirstat --scan /usr/share/doc -q
+              state dirstat --tree /usr/share/doc -d 1 -n 3
+              dpkg -r state'
+          done
+          docker run --rm -v "$PWD/build:/pkg:ro" centos:7 sh -ec '/pkg/state --version; /pkg/state'
 
       - name: Show service log
         if: failure()

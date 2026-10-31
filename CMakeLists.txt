@@ -73,6 +73,13 @@ endif()
 target_compile_definitions(state PRIVATE STATE_VERSION="${version}")
 target_link_libraries(state PRIVATE Threads::Threads)
 
+# Fully static Linux binary (build with CC=musl-gcc): runs on any distribution,
+# including old ones such as Ubuntu 18.04, because it needs no system libraries.
+option(STATE_STATIC "Link the Linux binary statically" OFF)
+if(STATE_STATIC AND NOT WIN32)
+    target_link_options(state PRIVATE -static)
+endif()
+
 if(WIN32)
     # Windows 10 APIs (GPU counters); static so state.exe needs no MinGW DLLs.
     target_compile_definitions(state PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 UNICODE _UNICODE)
@@ -88,6 +95,10 @@ install(FILES README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 if(UNIX)
     install(FILES packaging/state.service DESTINATION lib/systemd/system)
     install(FILES packaging/debian/copyright DESTINATION ${CMAKE_INSTALL_DOCDIR})
+    if(STATE_STATIC)
+        install(FILES packaging/debian/lintian-overrides
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/lintian/overrides RENAME state)
+    endif()
 
     # Debian versions: v0.0.1-alpha.1 -> 0.0.1~alpha.1 ('~' sorts before the final 0.0.1)
     string(REGEX REPLACE "^v" "" deb_version "${version}")
@@ -120,7 +131,11 @@ WinDirStat), with cached scans and a JSON API.")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "wildwind123 <wildwind123@users.noreply.github.com>")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/wildwind123/state")
     set(CPACK_DEBIAN_PACKAGE_SECTION utils)
-    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    if(STATE_STATIC)
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF) # a static binary depends on nothing
+    else()
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    endif()
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
         ${CMAKE_SOURCE_DIR}/packaging/debian/postinst
         ${CMAKE_SOURCE_DIR}/packaging/debian/prerm
